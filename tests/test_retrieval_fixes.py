@@ -110,3 +110,26 @@ def test_degradation_reasons_are_collected_per_request():
     report_degraded("reranker_unavailable")
     assert reasons == ["reranker_unavailable"]
     assert start_request() == []
+
+
+def test_rrf_fusion_is_rank_based_and_normalised():
+    retriever = HybridRetriever.__new__(HybridRetriever)
+    retriever.df = pd.DataFrame({"name": ["a", "b", "c"]})
+    components = {
+        "semantic": np.array([0.9, 0.1, 0.5]),
+        "bm25": np.array([100.0, 1.0, 50.0]),  # different scale, same order
+        "specificity": np.array([1.0, 0.0, 0.5]),
+        "quality": np.array([1.0, 0.2, 0.6]),
+    }
+    fused = retriever._rrf_fusion(components)
+    assert fused[0] == pytest.approx(1.0)  # ranked first by every component
+    assert fused.argsort()[::-1].tolist() == [0, 2, 1]
+
+
+def test_split_query_keeps_short_queries_whole():
+    from src.retriever import split_query
+
+    assert split_query("Java developer, 40 minutes") == ["Java developer, 40 minutes"]
+    long_jd = ". ".join(f"Responsibility number {i} involves stakeholder reporting" for i in range(20))
+    parts = split_query(long_jd)
+    assert parts[0] == long_jd and 1 < len(parts) <= 7

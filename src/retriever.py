@@ -33,6 +33,29 @@ def parse_duration_minutes(value) -> Optional[int]:
     return int(match.group()) if match else None
 
 
+def split_query(query: str, min_words: int = 60, chunk_words: int = 30, max_chunks: int = 6) -> List[str]:
+    """
+    Split a long job description into the full text plus a few focused sub-queries.
+
+    Long pasted JDs mix the role with boilerplate (company blurb, benefits); retrieving per
+    chunk and fusing the rankings keeps one strong signal from being drowned by the rest.
+    Short queries are returned unchanged.
+    """
+    words = query.split()
+    if len(words) < min_words:
+        return [query]
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?;:])\s+|\n+", query) if s.strip()]
+    chunks, current = [], []
+    for sentence in sentences:
+        current.extend(sentence.split())
+        if len(current) >= chunk_words:
+            chunks.append(" ".join(current))
+            current = []
+    if len(current) >= 5:
+        chunks.append(" ".join(current))
+    return [query] + chunks[:max_chunks]
+
+
 class HybridRetriever:
     """
     Hybrid retrieval system for SHL assessment recommendations.
@@ -58,6 +81,13 @@ class HybridRetriever:
     BM25_WEIGHT = 0.2
     SPECIFICITY_WEIGHT = 0.4
     QUALITY_WEIGHT = 0.1
+    COMPONENT_WEIGHTS = {
+        'semantic': SEMANTIC_WEIGHT,
+        'bm25': BM25_WEIGHT,
+        'specificity': SPECIFICITY_WEIGHT,
+        'quality': QUALITY_WEIGHT,
+    }
+    RRF_K = 60  # standard RRF constant; dampens the gap between neighbouring ranks
     
     def __init__(
         self,
@@ -137,6 +167,12 @@ class HybridRetriever:
         self.semantic_weight = self.SEMANTIC_WEIGHT
         self.bm25_weight = self.BM25_WEIGHT
         self.specificity_weight = self.SPECIFICITY_WEIGHT
+        self.fusion = os.getenv("RETRIEVAL_FUSION", "weighted")
+        self.decompose = os.getenv("RETRIEVAL_DECOMPOSE", "false").lower() in {"1", "true", "yes"}
+        
+        # Quality scores depend only on the catalogue, so compute them once
+        quality = np.array([self._calculate_quality_score(self.df.iloc[i]) for i in range(len(self.df))])
+        self._quality_scores = quality / quality.max()
         
         logger.info("Hybrid Retriever initialization complete")
     
@@ -146,13 +182,17 @@ class HybridRetriever:
     
     def _get_query_embedding(self, query: str) -> np.ndarray:
         """Generate a normalised query embedding (EMBEDDING_DIM dimensions)."""
+        return self._get_query_embeddings([query])[0]
+
+    def _get_query_embeddings(self, queries: List[str]) -> np.ndarray:
+        """Embed several queries in one call; zero vectors (and a degraded flag) on failure."""
         try:
-            return embed(query, task_type="RETRIEVAL_QUERY")[0]
+            return embed(queries, task_type="RETRIEVAL_QUERY")
         except Exception as e:
             logger.error(f"Failed to generate embedding: {e}")
             logger.warning("Falling back to zero vector - retrieval quality will be degraded")
             report_degraded("embedding_unavailable")
-            return np.zeros(EMBEDDING_DIM)
+            return np.zeros((len(queries), EMBEDDING_DIM))
     
     def _get_dense_scores(self, query_embedding: np.ndarray) -> np.ndarray:
         """Compute semantic similarity scores using FAISS vector search."""
@@ -332,7 +372,43 @@ class HybridRetriever:
             
         return max(score, 0.1)
     
-    def retrieve(self, query: str, k: int = 10, return_scores: bool = False):
+    def _component_scores(self, query: str, query_emb: np.ndarray) -> Dict[str, np.ndarray]:
+        """Per-component scores in [0, 1] for one (sub-)query."""
+        return {
+            'semantic': self._get_dense_scores(query_emb),
+            'bm25': self._get_sparse_scores(query),
+            'specificity': self._get_specificity_scores(query),
+            'quality': self._quality_scores,
+        }
+
+    def _weighted_fusion(self, components: Dict[str, np.ndarray]) -> np.ndarray:
+        """Weighted sum of [0, 1] component scores."""
+        return sum(self.COMPONENT_WEIGHTS[name] * scores for name, scores in components.items())
+
+    def _rrf_fusion(self, components: Dict[str, np.ndarray]) -> np.ndarray:
+        """
+        Weighted Reciprocal Rank Fusion: sum_c w_c / (RRF_K + rank_c(d)).
+
+        Uses ranks only, so it is insensitive to how each component's scores are scaled.
+        Normalised so an item ranked first by every component scores 1.0.
+        """
+        fused = np.zeros(len(self.df))
+        for name, scores in components.items():
+            if not np.any(scores):
+                continue  # e.g. zero-vector semantic scores when embeddings are unavailable
+            ranks = np.empty(len(scores))
+            ranks[np.argsort(-scores, kind="stable")] = np.arange(1, len(scores) + 1)
+            fused += self.COMPONENT_WEIGHTS[name] / (self.RRF_K + ranks)
+        return fused / (sum(self.COMPONENT_WEIGHTS.values()) / (self.RRF_K + 1))
+
+    def retrieve(
+        self,
+        query: str,
+        k: int = 10,
+        return_scores: bool = False,
+        fusion: Optional[str] = None,
+        decompose: Optional[bool] = None,
+    ):
         """
         Retrieve top-k assessments using hybrid scoring.
         
@@ -343,50 +419,49 @@ class HybridRetriever:
             query: Enhanced query text (role + skills + preferences + test types)
             k: Number of results to return (default: 10)
             return_scores: If True, return (index, score_dict) tuples instead of just indices
+            fusion: "weighted" (default) or "rrf"; overrides RETRIEVAL_FUSION
+            decompose: split long queries into sub-queries and fuse their rankings;
+                overrides RETRIEVAL_DECOMPOSE (default off)
             
         Returns:
             If return_scores=False: List of assessment indices sorted by relevance (highest first)
             If return_scores=True: List of (index, score_dict) tuples with detailed scores
-            
-        Scoring formula:
-            score = 0.3*semantic + 0.2*bm25 + 0.4*specificity + 0.1*quality
         """
-        # Compute individual score components
-        query_emb = self._get_query_embedding(query)
-        semantic_scores = self._get_dense_scores(query_emb)
-        bm25_scores = self._get_sparse_scores(query)
-        specificity_scores = self._get_specificity_scores(query)
+        fusion = fusion or self.fusion
+        decompose = self.decompose if decompose is None else decompose
+        fuse = self._rrf_fusion if fusion == "rrf" else self._weighted_fusion
+
+        sub_queries = split_query(query) if decompose else [query]
+        embeddings = self._get_query_embeddings(sub_queries)
+
+        # Score the full query and each sub-query, then combine the per-query rankings with RRF
+        per_query = [fuse(self._component_scores(q, e)) for q, e in zip(sub_queries, embeddings)]
+        if len(per_query) == 1:
+            hybrid_scores = per_query[0]
+        else:
+            hybrid_scores = self._rrf_fusion_queries(per_query)
         
-        # Quality filtering
-        quality_scores = np.array([self._calculate_quality_score(self.df.iloc[i]) for i in range(len(self.df))])
-        quality_scores = quality_scores / quality_scores.max()
-        
-        # Weighted combination
-        hybrid_scores = (
-            self.semantic_weight * semantic_scores +
-            self.bm25_weight * bm25_scores +
-            self.specificity_weight * specificity_scores +
-            self.QUALITY_WEIGHT * quality_scores
-        )
-        
-        # Return top-k indices
-        top_indices = np.argsort(hybrid_scores)[::-1][:k].tolist()
+        top_indices = np.argsort(-hybrid_scores, kind="stable")[:k].tolist()
         
         if return_scores:
-            # Return indices with detailed scores
+            components = self._component_scores(query, embeddings[0])
             results = []
             for idx in top_indices:
-                score_dict = {
-                    'semantic': float(semantic_scores[idx]),
-                    'bm25': float(bm25_scores[idx]),
-                    'specificity': float(specificity_scores[idx]),
-                    'quality': float(quality_scores[idx]),
-                    'hybrid': float(hybrid_scores[idx])
-                }
+                score_dict = {name: float(scores[idx]) for name, scores in components.items()}
+                score_dict['hybrid'] = float(hybrid_scores[idx])
                 results.append((idx, score_dict))
             return results
         else:
             return top_indices
+
+    def _rrf_fusion_queries(self, per_query: List[np.ndarray]) -> np.ndarray:
+        """Equal-weight RRF across sub-query rankings, normalised to 1.0 for an item ranked first everywhere."""
+        fused = np.zeros(len(self.df))
+        for scores in per_query:
+            ranks = np.empty(len(scores))
+            ranks[np.argsort(-scores, kind="stable")] = np.arange(1, len(scores) + 1)
+            fused += 1.0 / (self.RRF_K + ranks)
+        return fused / (len(per_query) / (self.RRF_K + 1))
     
     def get_candidates(self, query: str, k: int = 10) -> List[Dict]:
         """
