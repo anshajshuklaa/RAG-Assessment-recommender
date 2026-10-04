@@ -53,7 +53,7 @@ ADVANCED RANKING CRITERIA (in order of importance):
 3. ASSESSMENT TYPE APPROPRIATENESS (20% weight):
    - Coding roles: Prioritize "programming", "coding", "technical" assessments
    - Behavioral roles: Prioritize "behavioral", "personality", "situational" tests
-   - Mixed roles (e.g., "Java + collaboration"): Balance technical + behavioral assessments
+   - Mixed roles (technical skills plus soft skills): Balance technical + behavioral assessments
    - Cognitive roles: Prioritize "reasoning", "problem-solving", "analytical" tests
 
 4. DURATION PREFERENCES (10% weight):
@@ -70,30 +70,9 @@ ADVANCED RANKING CRITERIA (in order of importance):
    - Related technologies get medium priority (Java → Spring Boot, Python → Django)
    - Generic skills get lower priority
 
-MATCHING PATTERNS:
-- "Java developer" → Prioritize: Core Java, Java 8, Java frameworks, coding assessments
-- "Java + collaboration" → Prioritize: Java assessments + Interpersonal Communications + behavioral tests
-- "Sales representative" → Prioritize: Sales scenarios, entry-level sales, behavioral assessments
-- "Marketing manager" → Prioritize: Marketing assessments, managerial scenarios, leadership tests
-- "Data analyst" → Prioritize: SQL assessments, data analysis, statistical reasoning, Excel tests
-- "COO/Executive" → Prioritize: Leadership reports, executive assessments, business acumen
-- "Admin assistant" → Prioritize: Administrative professional, clerical speed, office management
-- "Content writer" → Prioritize: Writing assessments, grammar tests, SEO knowledge, creative writing
-- "Consultant" → Prioritize: Analytical assessments (numerical calculation, verbal ability, administrative professional, personality questionnaire, verify interactive) over management/leadership solutions
-
-FUNCTIONAL MANAGER ROLES:
-For roles like "Programming Manager" or "Marketing Manager", the PRIMARY requirement is FUNCTIONAL expertise (programming/marketing skills), SECONDARY requirement is managerial skills.
-
-- "Programming Manager" → FIRST prioritize: Programming/Software Development assessments, Verify series (verbal, inductive), Communication assessments
-  → THEN consider: Generic "Manager Solution" assessments (only if functional assessments already selected)
-  → NEVER rank "Manager Solution" higher than functional skill assessments
-
-- "Marketing Manager" → FIRST prioritize: Marketing assessments, Digital Advertising, Campaign Management, Excel
-  → THEN consider: Generic "Manager Solution" assessments (only if functional assessments already selected)
-  → NEVER rank "Manager Solution" higher than functional skill assessments
-
-KEY PRINCIPLE: Functional roles with "Manager" in title need FUNCTIONAL skills tested BEFORE generic managerial skills.
-Generic "Manager Solution" assessments should be ranked LOWER than specific functional assessments for functional manager roles.
+FUNCTIONAL ROLES WITH "MANAGER" IN THE TITLE:
+Test the functional skills of the role before generic managerial skills; rank generic "Manager Solution"
+assessments below assessments of the role's specific skills.
 
 ASSESSMENT QUALITY INDICATORS (use for tie-breaking):
 - "Solution" assessments: Comprehensive, high-quality (prefer over standalone tests)

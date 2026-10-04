@@ -126,7 +126,6 @@ shl-recommender/
 │   └── logging_config.py      # Logging configuration
 │
 ├── outputs/                    # Pre-computed indices (REQUIRED)
-│   ├── embeddings_gemini_001.npy    # 768-dim embeddings
 │   ├── faiss_gemini_001.index       # FAISS vector index
 │   ├── bm25_index.pkl               # BM25 keyword index
 │   └── assessments_processed.csv    # 506 assessments
@@ -138,8 +137,11 @@ shl-recommender/
 │   ├── skill_index.json
 │   └── role_templates.json
 │
-├── configs/                    # Configuration files
-│   └── recommender_config.json
+├── scripts/
+│   ├── build_index.py         # Rebuild FAISS index with the configured embedding model
+│   └── evaluate.py            # Recall@10 / MAP@10 per pipeline stage
+│
+├── tests/                      # Regression tests (pytest)
 │
 ├── .env                        # API keys (REQUIRED)
 ├── .env.example               # Environment template
@@ -279,7 +281,6 @@ GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 
 Edit `src/retreiver.py` to adjust:
 - **Hybrid weights**: Modify semantic/BM25/specificity ratios
-- **Domain boosts**: Adjust finance/analyst/consultant boost values
 - **Top-K results**: Change default retrieval count
 
 Edit `src/query_enhancer.py` to:
@@ -305,9 +306,10 @@ python scripts/evaluate.py --stages bm25 hybrid  # no LLM calls
 | Current models, before FAISS fix | full workflow | 0.478 | 0.297 |
 | **After fixes** | BM25 only | 0.154 | 0.108 |
 | **After fixes** | hybrid retriever | **0.283** | **0.181** |
+| After removing role-specific rules | hybrid retriever | 0.287 | 0.173 |
 
 Full-workflow numbers after the fixes are still to be measured (the free-tier key allows 20 LLM requests per day).
-These are training queries that some retrieval rules were tuned on, so they overstate held-out quality.
+The retriever no longer has rules written for specific roles. The LLM prompts still contain some generic role examples, so treat these training-set numbers as optimistic.
 
 ### Rebuilding the vector index
 
