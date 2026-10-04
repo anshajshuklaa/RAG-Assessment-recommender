@@ -66,7 +66,6 @@ def parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
-    from src.api import app
     import uvicorn
 
     args = parse_args()
@@ -79,8 +78,9 @@ if __name__ == "__main__":
     logger.info("Stats endpoint available at /stats")
     logger.info("=" * 70)
 
+    # An import string (not the app object) is required for reload and multiple workers
     uvicorn.run(
-        app,
+        "src.api:app",
         host=args.host,
         port=args.port,
         reload=args.reload,

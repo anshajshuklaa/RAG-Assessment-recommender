@@ -275,7 +275,22 @@ GEMINI_API_KEY=your_api_key_here
 # Optional: model overrides
 GEMINI_MODEL=gemini-3.8-flash
 GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+
+# Optional: API protection
+API_KEY=change_me                 # when set, /recommend requires header X-API-Key
+RATE_LIMIT_PER_MINUTE=30          # per client IP; 0 disables
+API_ALLOW_ORIGINS=https://your.app  # comma-separated; "*" disables credentials
 ```
+
+### Degraded responses
+
+If an embedding, query-enhancer or reranker call fails, `/recommend` still answers with fallback results,
+but marks them with response headers:
+
+- `X-Degraded: true|false`
+- `X-Degraded-Reasons: embedding_unavailable,query_enhancer_unavailable,reranker_unavailable`
+
+If no recommendations can be produced at all, it returns `503`.
 
 ### Customization
 

@@ -100,3 +100,13 @@ def test_specificity_scores_stay_normalised():
     for query in ["senior financial analyst", "consultant", "COO executive"]:
         scores = retriever._get_specificity_scores(query)
         assert scores.min() >= 0.0 and scores.max() <= 1.0
+
+
+def test_degradation_reasons_are_collected_per_request():
+    from src.degradation import report_degraded, start_request
+
+    reasons = start_request()
+    report_degraded("reranker_unavailable")
+    report_degraded("reranker_unavailable")
+    assert reasons == ["reranker_unavailable"]
+    assert start_request() == []

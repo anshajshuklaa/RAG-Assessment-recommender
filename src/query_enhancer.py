@@ -1,4 +1,5 @@
-from src.gemini_client import generate
+from src.degradation import report_degraded
+from src.gemini_client import generate_json
 import os
 import json
 from typing import Dict
@@ -470,15 +471,7 @@ JOB DESCRIPTION:
 \"\"\"{query}\"\"\"
 """
         try:
-            text = generate(prompt).strip()
-            
-            # Remove code blocks if any
-            if '```' in text:
-                text = text.split('```')[1]
-                if text.startswith('json'):
-                    text = text[4:]
-            
-            data = json.loads(text)
+            data = generate_json(prompt)
             
             # Limit fields to optimal sizes
             skills = data.get("skills", [])[:8]  # Max 8 skills
@@ -495,6 +488,7 @@ JOB DESCRIPTION:
             }
         except Exception as e:
             logger.warning(f"LLM keyword extraction failed: {e}")
+            report_degraded("query_enhancer_unavailable")
             return {
                 "role": "",
                 "seniority": "",

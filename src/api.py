@@ -10,8 +10,12 @@ Endpoints:
     GET  / - Root endpoint with API information
 """
 
-from fastapi import FastAPI, HTTPException, status
+from collections import defaultdict, deque
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 import asyncio
@@ -87,7 +91,22 @@ class StatsResponse(BaseModel):
 # FastAPI Application Setup
 # ============================================================================
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load the workflow orchestrator on startup."""
+    logger.info("Starting SHL Recommender API")
+    try:
+        app_state.orchestrator = get_orchestrator()
+        logger.info("Loaded %s assessments; API ready", len(app_state.orchestrator.retriever.df))
+    except Exception as e:
+        logger.error("Failed to initialize system: %s", e, exc_info=True)
+        raise
+    yield
+    logger.info("Shutting down SHL Recommender API")
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="SHL Recommender API",
     description="Assessment recommendation system using advanced workflow orchestration",
     version="1.0.0",
@@ -105,7 +124,8 @@ else:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_credentials=True,
+    # Browsers reject credentials with a wildcard origin, so only allow them for explicit origins
+    allow_credentials=_allowed_origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -148,39 +168,35 @@ app_state = AppState()
 
 
 # ============================================================================
-# Startup & Shutdown Events
+# Access Control
 # ============================================================================
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize system on startup."""
-    logger.info("=" * 70)
-    logger.info("Starting SHL Recommender API")
-    logger.info("=" * 70)
-    
-    try:
-        # Initialize workflow orchestrator (loads models)
-        logger.info("Loading workflow orchestrator...")
-        app_state.orchestrator = get_orchestrator()
-        logger.info("Workflow orchestrator loaded successfully")
-        
-        # Log system info
-        retriever = app_state.orchestrator.retriever
-        total_assessments = len(retriever.df)
-        logger.info("Loaded %s assessments", total_assessments)
-        logger.info("API ready to accept requests")
-        
-    except Exception as e:
-        logger.error("Failed to initialize system: %s", e, exc_info=True)
-        raise
-    
-    logger.info("=" * 70)
+API_KEY = os.getenv("API_KEY")  # when set, /recommend requires a matching X-API-Key header
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "30"))
+_request_log: Dict[str, deque] = defaultdict(deque)
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown."""
-    logger.info("Shutting down SHL Recommender API")
+def require_api_key(x_api_key: Optional[str] = Header(default=None)):
+    if API_KEY and x_api_key != API_KEY:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key")
+
+
+def rate_limit(request: Request):
+    """Sliding one-minute window per client IP (in-memory, per process)."""
+    if RATE_LIMIT_PER_MINUTE <= 0:
+        return
+    client = request.client.host if request.client else "unknown"
+    now = time.time()
+    window = _request_log[client]
+    while window and now - window[0] > 60:
+        window.popleft()
+    if len(window) >= RATE_LIMIT_PER_MINUTE:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": str(int(60 - (now - window[0])) + 1)},
+        )
+    window.append(now)
 
 
 # ============================================================================
@@ -237,9 +253,10 @@ async def health_check():
     response_model=RecommendationResponse,
     tags=["Recommendations"],
     summary="Get assessment recommendations",
-    description="Provide a job description or query to get personalized assessment recommendations"
+    description="Provide a job description or query to get personalized assessment recommendations",
+    dependencies=[Depends(require_api_key), Depends(rate_limit)],
 )
-async def recommend(request: RecommendationRequest):
+async def recommend(request: RecommendationRequest, response: Response):
     """
     Assessment recommendation endpoint - REQUIRED FOR SUBMISSION.
     
@@ -265,20 +282,34 @@ async def recommend(request: RecommendationRequest):
     logger.info("Query: %s...", request.query[:100])
     logger.info("Requested top_k: %s", request.top_k)
     
+    if app_state.orchestrator is None:
+        logger.error("Orchestrator not initialized")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service not fully initialized. Please try again."
+        )
+    
     try:
-        # Run the workflow
-        if app_state.orchestrator is None:
-            logger.error("Orchestrator not initialized")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Service not fully initialized. Please try again."
-            )
-        
         # Run workflow with optional custom test type ratio
         result = await app_state.orchestrator.run(
             query=request.query,
             custom_test_type_ratio=request.test_type_ratio
         )
+        
+        if not result.get("results"):
+            logger.error("Workflow returned no results: %s", result.get("error"))
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Recommendations are temporarily unavailable. Please try again."
+            )
+        
+        # Fallbacks taken (embedding, enhancer, reranker) are reported in headers so the
+        # response body keeps the required format
+        degraded_reasons = result.get("degraded_reasons", [])
+        response.headers["X-Degraded"] = "true" if degraded_reasons else "false"
+        if degraded_reasons:
+            response.headers["X-Degraded-Reasons"] = ",".join(degraded_reasons)
+            logger.warning("Degraded response: %s", degraded_reasons)
         
         # Extract results and confidence
         recommendations = result.get("results", [])[:request.top_k]
@@ -334,11 +365,13 @@ async def recommend(request: RecommendationRequest):
             recommended_assessments=assessment_list
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Recommendation failed: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate recommendations: {str(e)}"
+            detail="Failed to generate recommendations"
         )
 
 
@@ -385,9 +418,9 @@ async def get_stats():
 async def global_exception_handler(request, exc):
     """Global exception handler for unhandled errors."""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return HTTPException(
+    return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="An unexpected error occurred"
+        content={"detail": "An unexpected error occurred"}
     )
 
 

@@ -28,6 +28,7 @@ from src.improvements import (
     post_rerank_specialist_validate,
 )
 from src.logging_config import get_logger
+from src.degradation import start_request
 
 logger = get_logger(__name__)
 
@@ -639,6 +640,8 @@ class WorkflowOrchestrator:
             "custom_test_type_ratio": custom_test_type_ratio  # type: ignore
         }
         
+        degraded_reasons = start_request()
+        
         # Execute graph
         try:
             # LangGraph's compiled graph uses ainvoke for async execution
@@ -661,7 +664,9 @@ class WorkflowOrchestrator:
                 "confidence": {
                     "retrieval": final_state.get("retrieval_confidence", 0),
                     "reranking": final_state.get("reranker_confidence", 0)
-                }
+                },
+                "degraded_reasons": list(degraded_reasons),
+                "error": final_state.get("error")
             }
             
         except Exception as e:
@@ -670,6 +675,7 @@ class WorkflowOrchestrator:
                 "results": [],
                 "state": initial_state,
                 "confidence": {"retrieval": 0.0, "reranking": 0.0},
+                "degraded_reasons": list(degraded_reasons),
                 "error": str(e)
             }
 
