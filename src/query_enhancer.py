@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from src.gemini_client import generate
 import os
 import json
 from typing import Dict
@@ -271,11 +271,8 @@ class HybridQueryEnhancer:
 
 
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
+        if not os.getenv("GEMINI_API_KEY"):
             raise ValueError("Set GEMINI_API_KEY in .env")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash')  # Stable version with unlimited free tier (2K RPM)
 
     def _expand_with_synonyms(self, skills: list) -> list:
         """
@@ -473,8 +470,7 @@ JOB DESCRIPTION:
 \"\"\"{query}\"\"\"
 """
         try:
-            response = self.model.generate_content(prompt)
-            text = response.text.strip()
+            text = generate(prompt).strip()
             
             # Remove code blocks if any
             if '```' in text:

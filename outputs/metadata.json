@@ -1,8 +1,7 @@
 {
-  "embedding_model": "sentence-transformers/all-mpnet-base-v2",
+  "embedding_model": "gemini-embedding-001",
   "embedding_dimension": 768,
-  "num_assessments": 429,
-  "previous_model": "sentence-transformers/all-MiniLM-L6-v2",
-  "improvement": "4x better Recall@10 (20% vs 5%)",
-  "reindexed_at": "2025-11-09T17:25:33.638932"
+  "num_assessments": 506,
+  "text_field": "search_text",
+  "reindexed_at": "2026-10-04T22:20:00+00:00"
 }

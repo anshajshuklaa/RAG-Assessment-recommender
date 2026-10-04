@@ -6,7 +6,7 @@ including role-skill alignment, seniority matching, and assessment type appropri
 """
 
 import os
-import google.generativeai as genai
+from src.gemini_client import GENERATION_MODEL, generate
 from typing import List, Dict, Optional, cast
 import time
 from src.logging_config import get_logger
@@ -118,15 +118,13 @@ Do not include any other information in your response, just the JSON array of in
         """
         Initialize Gemini reranker.
         
-        Uses non-thinking model variant (gemini-2.0-flash-exp) by default for better
-        determinism and positional consistency in rankings.
+        Uses GEMINI_MODEL (default gemini-3.8-flash) at temperature 0 for
+        deterministic rankings.
         
         Args:
-            model: Optional model name override. Defaults to gemini-2.0-flash-exp.
+            model: Optional model name override. Defaults to GEMINI_MODEL.
         """
-        default_model = os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash-exp')
-        self.model_name = model or default_model
-        self.client = genai.GenerativeModel(self.model_name)
+        self.model_name = model or GENERATION_MODEL
         self.stats = {
             "reranks": 0,
             "retries": 0,
@@ -229,13 +227,10 @@ Do not include any other information in your response, just the JSON array of in
         # Try reranking with retries
         for attempt in range(max_retries + 1):
             try:
-                # Use a minimal generation call here. If a custom generation_config
-                # is required for your environment, pass it via GEMINI_GENERATION_CONFIG
-                # or update this call to match the SDK signature in your runtime.
-                response = self.client.generate_content(prompt)
+                response_text = generate(prompt, model=self.model_name)
                 
                 # Parse response
-                indices = self._parse_response(response.text, len(candidates))
+                indices = self._parse_response(response_text, len(candidates))
                 
                 if not indices:
                     raise ValueError("Could not parse response indices")

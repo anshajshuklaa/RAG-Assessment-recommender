@@ -11,6 +11,7 @@ Implements explicit extract→rag→filter graph with:
 from typing import TypedDict, List, Dict, Literal, Optional
 from langgraph.graph import StateGraph, END
 import asyncio
+import pandas as pd
 import json
 from pathlib import Path
 
@@ -218,24 +219,32 @@ class WorkflowOrchestrator:
                 k = 50
                 logger.info("  Using focused retrieval (50 candidates)")
             
-            # Perform retrieval (returns indices)
-            candidate_indices = await asyncio.to_thread(
+            # Perform retrieval (returns (index, score_dict) tuples)
+            candidates = await asyncio.to_thread(
                 self.retriever.retrieve,
                 query=state["enhanced_query"] or state["query"],
-                k=k
+                k=k,
+                return_scores=True
             )
+            
+            # Scale hybrid scores to [0, 1] so downstream weighting and confidence are comparable
+            max_score = max((sc["hybrid"] for _, sc in candidates), default=0.0) or 1.0
             
             # Convert indices to full assessment data
             results = []
-            for idx in candidate_indices:
+            for idx, score_dict in candidates:
                 row = self.retriever.df.iloc[idx]
+                duration = row.get('duration_minutes')
                 results.append({
                     "name": row['name'],
                     "url": row.get('url', ''),
                     "description": row.get('description', ''),
-                    "duration": row.get('duration_minutes', 0),
+                    "duration": int(duration) if pd.notna(duration) else 0,
                     "test_types": row.get('test_types', ''),
-                    "final_score": row.get('final_score', 0.0) if 'final_score' in row else 0.0
+                    "adaptive_irt": str(row.get('adaptive_irt_support', '')).strip().lower() == 'yes',
+                    "remote_testing": str(row.get('remote_testing_support', '')).strip().lower() == 'yes',
+                    "final_score": score_dict["hybrid"] / max_score,
+                    "raw_score": score_dict["hybrid"]
                 })
             
             state["retrieval_results"] = results
@@ -410,6 +419,13 @@ class WorkflowOrchestrator:
                 top_k=10  # Final top-10 after improvements
             )
             
+            # Re-attach catalogue fields that the balancing/reranking steps drop
+            by_name = {r["name"]: r for r in results}
+            for r in improved_results:
+                source = by_name.get(r.get("name"), {})
+                r.setdefault("adaptive_irt", source.get("adaptive_irt", False))
+                r.setdefault("remote_testing", source.get("remote_testing", False))
+            
             state["reranked_results"] = improved_results
             
             # Calculate reranking confidence
@@ -515,15 +531,15 @@ class WorkflowOrchestrator:
         # Factor 1: Number of results (normalized)
         count_score = min(len(results) / 50, 1.0) * 0.3
         
-        # Factor 2: Top result score (normalized)
-        top_score = results[0].get("final_score", 0.0)
-        score_normalized = min(top_score / 100, 1.0) * 0.4
+        # Factor 2: Top result score (raw hybrid score, roughly in [0, 1] before domain boosts)
+        top_score = results[0].get("raw_score", results[0].get("final_score", 0.0))
+        score_normalized = min(top_score, 1.0) * 0.4
         
         # Factor 3: Score distribution (check if top results are clearly better)
         if len(results) >= 5:
             top_3_avg = sum(r.get("final_score", 0) for r in results[:3]) / 3
             next_5_avg = sum(r.get("final_score", 0) for r in results[3:8]) / 5
-            distribution_score = min((top_3_avg - next_5_avg) / 50, 1.0) * 0.3 if next_5_avg > 0 else 0.15
+            distribution_score = min((top_3_avg - next_5_avg) / 0.2, 1.0) * 0.3 if next_5_avg > 0 else 0.15
         else:
             distribution_score = 0.15
         
