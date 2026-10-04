@@ -199,18 +199,14 @@ class HybridRetriever:
         """
         Compute specificity scores based on exact keyword matching.
         
-        Applies domain-specific boosts for technical terms, roles, and assessment types.
-        This component carries the highest weight (40%) in the hybrid scoring formula.
+        Rewards assessments whose name/description contain query keywords (technical terms,
+        roles, assessment types) and seniority terms. No role-specific rules.
         
         Args:
             query: Query text (lowercase comparison)
             
         Returns:
             Normalized specificity scores in range [0, 1]
-            
-        Note:
-            Special handling for functional manager roles (e.g., "Programming Manager")
-            prioritizes functional skills over generic management assessments.
         """
         query_lower = query.lower()
         
@@ -221,13 +217,12 @@ class HybridRetriever:
             # Frameworks/Tools
             'react', 'angular', 'vue', 'node', 'django', 'flask', 'spring', 'selenium', 'junit', 'pytest',
             'tableau', 'excel', 'power bi', 'sap', 'oracle', 'aws', 'azure', 'docker', 'kubernetes',
-            # Roles (distinguish consultant from manager)
+            # Roles
             'developer', 'engineer', 'qa', 'tester', 'analyst', 'manager', 'director', 'coo', 'ceo',
             'admin', 'assistant', 'sales', 'marketing', 'leader', 'leadership',
-            # Finance & Accounting (CRITICAL FIX)
+            # Finance & Accounting
             'finance', 'financial', 'accounting', 'accountant', 'bookkeeping', 'budgeting', 'forecasting',
-            # Consultant-specific patterns (separate from generic management)
-            'consultant', 'consulting', 'advisory', 'professional services', 
+            'consultant', 'consulting', 'advisory', 'professional services',
             # Core skills assessments
             'communication', 'verbal', 'numerical', 'inductive', 'reasoning', 'cognitive', 'personality',
             'seo', 'content', 'writing', 'english', 'data entry', 'customer service',
@@ -239,28 +234,12 @@ class HybridRetriever:
             'adaptive', 'remote', 'creative', 'strategic', 'clerical', 'detail-oriented'
         ]
         
-        # Consultant-specific assessment keywords
-        consultant_assessment_keywords = [
-            'numerical calculation', 'administrative professional', 'verbal ability', 
-            'personality questionnaire', 'opq32r', 'professional international',
-            'verify interactive', 'verify verbal', 'short form'
-        ]
-        
         # Seniority indicators for role-level matching
         seniority_keywords = ['entry', 'senior', 'lead', 'principal', 'staff', 'graduate', 'junior']
         
         # Extract keywords present in query
         present_keywords = [kw for kw in technical_keywords if kw in query_lower]
         present_seniority = [kw for kw in seniority_keywords if kw in query_lower]
-        present_consultant_assessments = [kw for kw in consultant_assessment_keywords if kw in query_lower]
-        
-        # Detect query patterns for specialized scoring
-        is_consultant_query = 'consultant' in query_lower
-        is_programming_manager = any(term in query_lower for term in ['programming manager', 'software manager', 'development manager'])
-        is_marketing_manager = any(term in query_lower for term in ['marketing manager', 'brand manager', 'campaign manager'])
-        is_content_writer = any(term in query_lower for term in ['content writer', 'copywriter', 'content creator'])
-        is_data_analyst = any(term in query_lower for term in ['data analyst', 'business analyst', 'data scientist'])
-        is_finance_analyst = any(term in query_lower for term in ['finance', 'financial', 'accounting', 'accountant', 'finance analyst', 'financial analyst'])
         
         # Initialize specificity scores
         specificity_scores = np.zeros(len(self.df))
@@ -269,13 +248,7 @@ class HybridRetriever:
         names_lower = self.df['name'].str.lower().fillna('').values
         descs_lower = self.df['description'].str.lower().fillna('').values
         
-        # Score constants
-        FUNCTIONAL_SKILL_BOOST = 10.0
-        COGNITIVE_ASSESSMENT_BOOST = 8.0
-        TOOL_ASSESSMENT_BOOST = 7.0
-        GENERIC_ROLE_PENALTY = -3.0
-        CONSULTANT_PROFESSIONAL_BOOST = 5.0
-        CONSULTANT_MGMT_PENALTY = -2.0
+        # Score constants (generic signals only: no role-specific rules)
         KEYWORD_NAME_BOOST = 3.0
         KEYWORD_DESC_BOOST = 0.2
         SENIORITY_BOOST = 4.0
@@ -283,88 +256,6 @@ class HybridRetriever:
         for i in range(len(self.df)):
             name_lower = names_lower[i]
             desc_lower = descs_lower[i]
-            
-            # Functional manager role scoring: prioritize functional skills over generic management
-            if is_programming_manager or is_marketing_manager:
-                functional_skills = ['marketing', 'programming', 'digital advertising', 'campaign', 'brand']
-                cognitive_assessments = ['verify', 'inductive', 'verbal', 'reasoning', 'cognitive']
-                tool_assessments = ['excel', 'microsoft', 'sql', 'powerpoint', 'office']
-                
-                if any(skill in name_lower for skill in functional_skills):
-                    specificity_scores[i] += FUNCTIONAL_SKILL_BOOST
-                if any(assess in name_lower for assess in cognitive_assessments):
-                    specificity_scores[i] += COGNITIVE_ASSESSMENT_BOOST
-                if any(tool in name_lower for tool in tool_assessments):
-                    specificity_scores[i] += TOOL_ASSESSMENT_BOOST
-                if 'manager solution' in name_lower or 'manager 8' in name_lower:
-                    specificity_scores[i] += GENERIC_ROLE_PENALTY
-            
-            # Content writer role scoring
-            if is_content_writer:
-                writer_boosts = {
-                    'seo': 9.0,
-                    'cms': 8.0,
-                    'grammar': 7.0,
-                    'personality': 6.0
-                }
-                writer_keywords = {
-                    'seo': ['seo', 'search engine'],
-                    'cms': ['drupal', 'wordpress', 'cms', 'content management'],
-                    'grammar': ['grammar', 'written english', 'writing', 'english comprehension'],
-                    'personality': ['opq', 'personality', 'work style']
-                }
-                
-                for category, keywords in writer_keywords.items():
-                    if any(kw in name_lower for kw in keywords):
-                        specificity_scores[i] += writer_boosts[category]
-            
-            # Data analyst role scoring
-            if is_data_analyst:
-                analyst_keywords = {
-                    'python': (['python', 'pandas', 'numpy'], 8.0),
-                    'sql': (['sql', 'database', 'data warehousing'], 8.0),
-                    'excel': (['excel', 'spreadsheet'], 7.0),
-                    'numerical': (['numerical', 'quantitative', 'reasoning'], 6.0)
-                }
-                
-                for keywords, boost in analyst_keywords.values():
-                    if any(kw in name_lower for kw in keywords):
-                        specificity_scores[i] += boost
-                        break
-            
-            # Finance analyst role scoring - CRITICAL FIX
-            if is_finance_analyst:
-                finance_keywords = {
-                    'financial': (['financial', 'finance', 'accounting'], 10.0),
-                    'excel': (['excel', 'spreadsheet', 'microsoft excel'], 9.0),
-                    'numerical': (['numerical', 'calculation', 'quantitative'], 8.0),
-                    'accounting': (['accounting', 'bookkeeping', 'ledger'], 8.0),
-                    'budgeting': (['budget', 'forecasting', 'planning'], 7.0),
-                    'analytical': (['analytical', 'analysis', 'reasoning'], 6.0)
-                }
-                
-                for keywords, boost in finance_keywords.values():
-                    if any(kw in name_lower for kw in keywords):
-                        specificity_scores[i] += boost
-                        break
-                
-                # PENALTY: Strongly penalize customer service/contact center for finance queries
-                if any(term in name_lower for term in ['customer service', 'contact center', 'call center', 'customer support']):
-                    specificity_scores[i] -= 10.0  # Strong penalty to push these down
-            
-            # Consultant query scoring: prefer analytical over management
-            if is_consultant_query:
-                if any(term in name_lower for term in ['professional', 'numerical', 'verbal', 'administrative', 'calculation', 'verify', 'opq']):
-                    specificity_scores[i] += CONSULTANT_PROFESSIONAL_BOOST
-                if any(term in name_lower for term in ['manager', 'management', 'leadership', 'director']):
-                    specificity_scores[i] += CONSULTANT_MGMT_PENALTY
-            
-            # Consultant-specific assessment matches
-            for kw in present_consultant_assessments:
-                if kw in name_lower:
-                    specificity_scores[i] += 6.0
-                elif kw in desc_lower:
-                    specificity_scores[i] += 2.0
             
             # Exact keyword matches using word boundaries
             for kw in present_keywords:
@@ -446,119 +337,6 @@ class HybridRetriever:
             
         return max(score, 0.1)
     
-    def _apply_domain_boosts(self, query: str, specificity_scores: np.ndarray) -> np.ndarray:
-        """Apply domain-specific boosts for finance, analyst, and consultant queries."""
-        query_lower = query.lower()
-        names_lower = self.df['name'].str.lower().fillna('').values
-        
-        # FINANCE DOMAIN BOOST
-        finance_keywords = ["finance", "financial", "accounting", "bookkeeping", "operations analyst"]
-        if any(kw in query_lower for kw in finance_keywords):
-            logger.info("Finance domain detected - applying boosts")
-            for i in range(len(self.df)):
-                name_lower = names_lower[i]
-                
-                # Very strong boost for financial assessments
-                if any(kw in name_lower for kw in ["financial", "accounting", "bookkeeping", "audit", "budgeting"]):
-                    specificity_scores[i] += 15.0  # Increased from 10.0
-                    logger.debug(f"Finance boost: +15.0 for '{self.df.iloc[i]['name']}'")
-                # Strong boost for numerical/excel (common in finance)
-                elif any(kw in name_lower for kw in ["numerical", "excel", "spreadsheet", "quantitative"]):
-                    specificity_scores[i] += 12.0  # Increased from 10.0
-                    logger.debug(f"Finance numerical boost: +12.0 for '{self.df.iloc[i]['name']}'")
-                # Moderate boost for business acumen
-                elif "business acumen" in name_lower:
-                    specificity_scores[i] += 8.0
-                    logger.debug(f"Finance business boost: +8.0 for '{self.df.iloc[i]['name']}'")
-                
-                # Strong penalty for generic "Professional" or "Solution" assessments in finance context
-                if any(kw in name_lower for kw in ["professional +", "professional solution", "manager solution", "director solution"]):
-                    # Only penalize if it doesn't have finance-specific keywords
-                    if not any(kw in name_lower for kw in ["financial", "accounting", "numerical", "excel"]):
-                        specificity_scores[i] -= 8.0  # Strong penalty
-                        logger.debug(f"Finance generic penalty: -8.0 for '{self.df.iloc[i]['name']}'")
-                
-                # Penalize customer service/contact center for finance queries
-                if any(kw in name_lower for kw in ["customer service", "contact center", "data entry", "call center"]):
-                    specificity_scores[i] -= 10.0  # Increased from 5.0
-                    logger.debug(f"Finance penalty: -10.0 for '{self.df.iloc[i]['name']}'")
-        
-        # ANALYST DOMAIN BOOST
-        analyst_keywords = ["analyst", "analysis"]
-        if any(kw in query_lower for kw in analyst_keywords):
-            logger.info("Analyst domain detected - applying boosts")
-            for i in range(len(self.df)):
-                name_lower = names_lower[i]
-                
-                # Boost analytical/professional assessments
-                if any(kw in name_lower for kw in ["numerical", "analytical", "problem solving", "critical thinking", "cognitive", "inductive", "verify"]):
-                    specificity_scores[i] += 8.0  # Increased from 6.0
-                    logger.debug(f"Analyst boost: +8.0 for '{self.df.iloc[i]['name']}'")
-                # Moderate boost for professional/personality
-                elif any(kw in name_lower for kw in ["professional", "opq", "personality"]):
-                    specificity_scores[i] += 5.0
-                    logger.debug(f"Analyst professional boost: +5.0 for '{self.df.iloc[i]['name']}'")
-                
-                # Penalize generic "Professional +" solutions for analyst queries
-                if any(kw in name_lower for kw in ["professional +", "professional solution"]):
-                    # Only penalize if it doesn't have analyst-specific keywords
-                    if not any(kw in name_lower for kw in ["numerical", "analytical", "cognitive", "verify"]):
-                        specificity_scores[i] -= 5.0
-                        logger.debug(f"Analyst generic penalty: -5.0 for '{self.df.iloc[i]['name']}'")
-                
-                # Penalize entry-level/data entry for mid/senior analyst queries
-                if any(kw in name_lower for kw in ["data entry", "entry-level", "clerk"]):
-                    if any(kw in query_lower for kw in ["mid", "senior", "experienced", "3+", "5+", "7+"]):
-                        specificity_scores[i] -= 4.0  # Increased from 3.0
-                        logger.debug(f"Analyst seniority penalty: -4.0 for '{self.df.iloc[i]['name']}'")
-        
-        # CONSULTANT DOMAIN BOOST
-        consultant_keywords = ["consultant", "consulting"]
-        if any(kw in query_lower for kw in consultant_keywords):
-            logger.info("Consultant domain detected - applying boosts")
-            for i in range(len(self.df)):
-                name_lower = names_lower[i]
-                
-                # Strong boost for verify/cognitive assessments
-                if any(kw in name_lower for kw in ["verify", "inductive", "deductive", "cognitive"]):
-                    specificity_scores[i] += 10.0
-                    logger.debug(f"Consultant verify boost: +10.0 for '{self.df.iloc[i]['name']}'")
-                # Boost for numerical/verbal/analytical
-                elif any(kw in name_lower for kw in ["numerical", "verbal", "analytical", "professional", "reasoning"]):
-                    specificity_scores[i] += 8.0
-                    logger.debug(f"Consultant analytical boost: +8.0 for '{self.df.iloc[i]['name']}'")
-                # Boost for OPQ/personality
-                elif any(kw in name_lower for kw in ["opq", "personality", "situational"]):
-                    specificity_scores[i] += 6.0
-                    logger.debug(f"Consultant personality boost: +6.0 for '{self.df.iloc[i]['name']}'")
-                
-                # Penalize generic management solutions for consultant
-                if "manager solution" in name_lower or "director solution" in name_lower:
-                    specificity_scores[i] -= 3.0
-                    logger.debug(f"Consultant penalty: -3.0 for '{self.df.iloc[i]['name']}'")
-        
-        # EXECUTIVE/COO DOMAIN BOOST
-        executive_keywords = ["coo", "ceo", "executive", "vp", "vice president", "chief"]
-        if any(kw in query_lower for kw in executive_keywords):
-            logger.info("Executive domain detected - applying boosts")
-            for i in range(len(self.df)):
-                name_lower = names_lower[i]
-                
-                # Strong boost for leadership/personality assessments
-                if any(kw in name_lower for kw in ["opq", "personality", "leadership", "executive"]):
-                    specificity_scores[i] += 12.0
-                    logger.debug(f"Executive personality boost: +12.0 for '{self.df.iloc[i]['name']}'")
-                # Boost for situational/behavioral
-                elif any(kw in name_lower for kw in ["situational", "behavioral", "judgment", "scenarios"]):
-                    specificity_scores[i] += 10.0
-                    logger.debug(f"Executive situational boost: +10.0 for '{self.df.iloc[i]['name']}'")
-                # Boost for cognitive/reasoning
-                elif any(kw in name_lower for kw in ["verify", "cognitive", "reasoning", "inductive"]):
-                    specificity_scores[i] += 7.0
-                    logger.debug(f"Executive cognitive boost: +7.0 for '{self.df.iloc[i]['name']}'")
-        
-        return specificity_scores
-    
     def retrieve(self, query: str, k: int = 10, return_scores: bool = False):
         """
         Retrieve top-k assessments using hybrid scoring.
@@ -583,9 +361,6 @@ class HybridRetriever:
         semantic_scores = self._get_dense_scores(query_emb)
         bm25_scores = self._get_sparse_scores(query)
         specificity_scores = self._get_specificity_scores(query)
-        
-        # Apply domain-specific boosts (CRITICAL FIX for finance/analyst/consultant)
-        specificity_scores = self._apply_domain_boosts(query, specificity_scores)
         
         # Quality filtering
         quality_scores = np.array([self._calculate_quality_score(self.df.iloc[i]) for i in range(len(self.df))])

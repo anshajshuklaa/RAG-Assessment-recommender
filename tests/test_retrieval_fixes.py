@@ -88,3 +88,15 @@ def test_retrieval_confidence_depends_on_scores():
     strong_conf = orchestrator._calculate_retrieval_confidence(strong)
     weak_conf = orchestrator._calculate_retrieval_confidence(weak)
     assert strong_conf >= orchestrator.MIN_RETRIEVAL_CONFIDENCE > weak_conf
+
+
+def test_specificity_scores_stay_normalised():
+    """Bug #5: rule boosts used to be added after normalisation, pushing scores up to ~15."""
+    retriever = HybridRetriever.__new__(HybridRetriever)
+    retriever.df = pd.DataFrame({
+        "name": ["Financial Accounting", "Verify Numerical", "Customer Service"],
+        "description": ["finance test", "numerical reasoning", "call center"],
+    })
+    for query in ["senior financial analyst", "consultant", "COO executive"]:
+        scores = retriever._get_specificity_scores(query)
+        assert scores.min() >= 0.0 and scores.max() <= 1.0
