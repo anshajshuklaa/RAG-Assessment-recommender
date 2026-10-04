@@ -103,7 +103,6 @@ class WorkflowOrchestrator:
     
     # Confidence thresholds
     MIN_RETRIEVAL_CONFIDENCE = 0.5  # Minimum confidence for retrieval results
-    MIN_RERANKER_CONFIDENCE = 0.7   # Minimum confidence for reranked results
     MAX_RETRY_COUNT = 2              # Maximum retry attempts
     
     def __init__(self):
@@ -123,11 +122,9 @@ class WorkflowOrchestrator:
         Build the LangGraph state machine.
         
         Graph structure:
-            START → extract → retrieval_check → rag → reranking_check → filter → END
-                                    ↓                           ↓
-                              retry_with_broad          retry_with_rerank
-                                    ↓                           ↓
-                                  rag ←─────────────────────────┘
+            START → extract → rag → retrieval_check → filter → END
+                                         ↓
+                                   retry_with_broad → rag
         """
         workflow = StateGraph(WorkflowState)
         
@@ -156,15 +153,9 @@ class WorkflowOrchestrator:
         # After retry, go back to RAG with new strategy
         workflow.add_edge("retry_with_broad", "rag")
         
-        # After filtering, check confidence and decide
-        workflow.add_conditional_edges(
-            "filter",
-            self._should_retry_reranking,
-            {
-                "retry": "retry_with_broad",
-                "end": END
-            }
-        )
+        # After filtering, finish. (A reranker-confidence retry used to loop back to RAG here;
+        # its uncalibrated 0.7 threshold fired on nearly every request, doubling LLM calls.)
+        workflow.add_edge("filter", END)
         
         return workflow.compile()
     
@@ -491,28 +482,6 @@ class WorkflowOrchestrator:
         
         logger.info(f"  → Retrieval confidence {confidence:.2f} OK, continuing to filter")
         return "continue"
-    
-    def _should_retry_reranking(self, state: WorkflowState) -> Literal["retry", "end"]:
-        """
-        Decision: Should we retry with broader retrieval after reranking?
-        
-        Retry if:
-        - Reranking confidence is below threshold
-        - Haven't exceeded max retries
-        - Using focused strategy (can broaden)
-        """
-        confidence = state.get("reranker_confidence", 0.0)
-        retry_count = state.get("retry_count", 0)
-        strategy = state.get("strategy", "focused")
-        
-        if (confidence < self.MIN_RERANKER_CONFIDENCE and 
-            retry_count < self.MAX_RETRY_COUNT and 
-            strategy == "focused"):
-            logger.warning(f"  → Reranker confidence {confidence:.2f} < {self.MIN_RERANKER_CONFIDENCE}, will retry")
-            return "retry"
-        
-        logger.info(f"  → Reranker confidence {confidence:.2f} OK, workflow complete")
-        return "end"
     
     def _calculate_retrieval_confidence(self, results: List[Dict]) -> float:
         """

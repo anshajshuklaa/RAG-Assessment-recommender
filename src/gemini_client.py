@@ -98,16 +98,45 @@ def generate(prompt: str, model: str = None) -> str:
     return response.text or ""
 
 
+_LLM_CACHE_PATH = Path(os.getenv("LLM_CACHE_PATH", ".cache/llm_responses.pkl"))
+_llm_cache: Optional[Dict[str, object]] = None
+
+
+def _load_llm_cache() -> Dict[str, object]:
+    global _llm_cache
+    if _llm_cache is None:
+        try:
+            with open(_LLM_CACHE_PATH, "rb") as f:
+                _llm_cache = pickle.load(f)
+        except (OSError, pickle.PickleError, EOFError):
+            _llm_cache = {}
+    return _llm_cache
+
+
 def generate_json(prompt: str, model: str = None, schema=None):
-    """Temperature-0 generation constrained to JSON (optionally to a response schema); returns parsed JSON."""
+    """
+    Temperature-0 generation constrained to JSON (optionally to a response schema); returns parsed JSON.
+
+    Responses are cached on disk by (model, schema, prompt): a repeated request is answered
+    instantly, costs no quota, and always returns the same output.
+    """
+    model = model or GENERATION_MODEL
+    key = hashlib.sha1(f"{model}|{schema}|{prompt}".encode()).hexdigest()
+    cache = _load_llm_cache()
+    if key in cache:
+        return cache[key]
+
     config = types.GenerateContentConfig(temperature=0, response_mime_type="application/json")
     if schema is not None:
         config.response_schema = schema
-    response = get_client().models.generate_content(
-        model=model or GENERATION_MODEL,
-        contents=prompt,
-        config=config,
-    )
-    if response.parsed is not None:
-        return response.parsed
-    return json.loads(response.text or "")
+    response = get_client().models.generate_content(model=model, contents=prompt, config=config)
+    result = response.parsed if response.parsed is not None else json.loads(response.text or "")
+
+    cache[key] = result
+    try:
+        _LLM_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_LLM_CACHE_PATH, "wb") as f:
+            pickle.dump(cache, f)
+    except OSError:
+        pass  # cache is an optimisation only
+    return result
