@@ -15,10 +15,10 @@ import faiss
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, embed  # noqa: E402
+from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, embed, index_path  # noqa: E402
 
 ASSESSMENTS_PATH = "outputs/assessments_processed.csv"
-INDEX_PATH = "outputs/faiss_gemini_001.index"
+INDEX_PATH = index_path()
 METADATA_PATH = "outputs/metadata.json"
 BATCH_SIZE = 50
 BATCH_PAUSE_SECS = 32  # free tier allows 100 embedding requests per minute

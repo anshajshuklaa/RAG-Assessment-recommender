@@ -20,8 +20,27 @@ from google.genai import types
 
 load_dotenv()
 
-EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
-EMBEDDING_DIM = 768
+# Embedding provider: "gemini" (API, free-tier quota), "local" (sentence-transformers, no key)
+# or "hf" (Hugging Face Inference API, needs HF_TOKEN). The index must be built with the same one.
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "gemini").lower()
+_DEFAULT_MODELS = {"gemini": "gemini-embedding-001", "local": "BAAI/bge-base-en-v1.5", "hf": "BAAI/bge-base-en-v1.5"}
+if EMBEDDING_PROVIDER not in _DEFAULT_MODELS:
+    raise ValueError(f"Unknown EMBEDDING_PROVIDER {EMBEDDING_PROVIDER!r}; use one of {sorted(_DEFAULT_MODELS)}")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL") or (
+    os.getenv("GEMINI_EMBEDDING_MODEL", _DEFAULT_MODELS["gemini"]) if EMBEDDING_PROVIDER == "gemini"
+    else _DEFAULT_MODELS[EMBEDDING_PROVIDER]
+)
+EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "768"))
+# BGE models expect this instruction on queries (not on documents).
+BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+
+def index_path() -> str:
+    """FAISS index file for the active embedding model, so indexes from different models never mix."""
+    if EMBEDDING_PROVIDER == "gemini" and EMBEDDING_MODEL == "gemini-embedding-001":
+        return "outputs/faiss_gemini_001.index"
+    slug = EMBEDDING_MODEL.split("/")[-1].replace(".", "_").replace("-", "_")
+    return f"outputs/faiss_{slug}.index"
 GENERATION_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 
@@ -67,13 +86,10 @@ def embed(texts: Union[str, List[str]], task_type: str = "RETRIEVAL_QUERY") -> n
     missing = [t for t, k in zip(texts, keys) if k not in cache]
 
     if missing:
-        response = get_client().models.embed_content(
-            model=EMBEDDING_MODEL,
-            contents=missing,
-            config=types.EmbedContentConfig(task_type=task_type, output_dimensionality=EMBEDDING_DIM),
-        )
-        vectors = np.array([e.values for e in response.embeddings], dtype="float32")
+        vectors = _embed_remote(missing, task_type)
         vectors /= np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-8
+        if vectors.shape[1] != EMBEDDING_DIM:
+            raise ValueError(f"{EMBEDDING_MODEL} returned {vectors.shape[1]} dims, expected EMBEDDING_DIM={EMBEDDING_DIM}")
         if not use_cache:
             return vectors
         for text, vector in zip(missing, vectors):
@@ -86,6 +102,39 @@ def embed(texts: Union[str, List[str]], task_type: str = "RETRIEVAL_QUERY") -> n
             pass  # cache is an optimisation only
 
     return np.stack([cache[k] for k in keys])
+
+
+@lru_cache(maxsize=1)
+def _local_model():
+    from sentence_transformers import SentenceTransformer  # optional dependency
+
+    return SentenceTransformer(EMBEDDING_MODEL)
+
+
+@lru_cache(maxsize=1)
+def _hf_client():
+    from huggingface_hub import InferenceClient  # optional dependency
+
+    token = os.getenv("HF_TOKEN")
+    if not token:
+        raise ValueError("HF_TOKEN not found in environment (needed for EMBEDDING_PROVIDER=hf)")
+    return InferenceClient(model=EMBEDDING_MODEL, token=token)
+
+
+def _embed_remote(texts: List[str], task_type: str) -> np.ndarray:
+    """Raw (unnormalised) embeddings from the configured provider."""
+    if EMBEDDING_PROVIDER == "gemini":
+        response = get_client().models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=texts,
+            config=types.EmbedContentConfig(task_type=task_type, output_dimensionality=EMBEDDING_DIM),
+        )
+        return np.array([e.values for e in response.embeddings], dtype="float32")
+    if task_type == "RETRIEVAL_QUERY" and "bge" in EMBEDDING_MODEL.lower():
+        texts = [BGE_QUERY_PREFIX + t for t in texts]
+    if EMBEDDING_PROVIDER == "local":
+        return np.asarray(_local_model().encode(texts), dtype="float32")
+    return np.asarray(_hf_client().feature_extraction(texts), dtype="float32").reshape(len(texts), -1)
 
 
 def generate(prompt: str, model: str = None) -> str:

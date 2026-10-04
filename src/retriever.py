@@ -19,7 +19,7 @@ import os
 from typing import List, Dict, Optional
 import pandas as pd
 from src.degradation import report_degraded
-from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, embed
+from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, embed, index_path
 from dotenv import load_dotenv
 import faiss
 
@@ -92,7 +92,7 @@ class HybridRetriever:
     def __init__(
         self,
         embeddings_path: str = "outputs/embeddings_gemini_001.npy",
-        faiss_index_path: str = "outputs/faiss_gemini_001.index",
+        faiss_index_path: Optional[str] = None,
         bm25_path: str = "outputs/bm25_index.pkl",
         assessments_path: str = "outputs/assessments_processed.csv",
     ):
@@ -126,6 +126,7 @@ class HybridRetriever:
         
         # Load FAISS index
         logger.info("Loading FAISS index")
+        faiss_index_path = faiss_index_path or index_path()
         if os.path.exists(faiss_index_path):
             self.faiss_index = faiss.read_index(faiss_index_path)
             logger.info(f"Loaded FAISS IndexFlatIP with {self.faiss_index.ntotal} vectors")
