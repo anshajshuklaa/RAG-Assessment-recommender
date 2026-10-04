@@ -5,7 +5,7 @@ Implements a hybrid retrieval system combining semantic search, BM25 keyword mat
 and specificity scoring for SHL assessment recommendations.
 
 Architecture:
-    - Semantic Search: 30% weight (Gemini embedding-001 + FAISS)
+    - Semantic Search: 30% weight (Gemini gemini-embedding-001 + FAISS)
     - BM25 Matching: 20% weight (keyword-based retrieval)
     - Specificity Scoring: 40% weight (exact keyword matching with domain boosts)
     - Quality Filtering: 10% weight (assessment quality indicators)
@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from rank_bm25 import BM25Okapi
 import pandas as pd
-import google.generativeai as genai
+from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, embed
 from dotenv import load_dotenv
 import faiss
 
@@ -32,6 +32,12 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+
+def parse_duration_minutes(value) -> Optional[int]:
+    """Parse catalogue durations like '49 minutes' into an int; None when unknown."""
+    match = re.search(r"\d+", str(value)) if pd.notna(value) else None
+    return int(match.group()) if match else None
+
 
 class HybridRetriever:
     """
@@ -81,11 +87,8 @@ class HybridRetriever:
         """
         logger.info("Initializing Hybrid Retriever")
         
-        # Configure Gemini API
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
+        if not os.getenv("GEMINI_API_KEY"):
             raise ValueError("GEMINI_API_KEY not found in environment. Please set it in .env file")
-        genai.configure(api_key=api_key)
         
         # Load embeddings (fallback for FAISS)
         logger.info("Loading embedding vectors")
@@ -102,6 +105,11 @@ class HybridRetriever:
         if os.path.exists(faiss_index_path):
             self.faiss_index = faiss.read_index(faiss_index_path)
             logger.info(f"Loaded FAISS IndexFlatIP with {self.faiss_index.ntotal} vectors")
+            if self.faiss_index.d != EMBEDDING_DIM:
+                raise ValueError(
+                    f"FAISS index dimension {self.faiss_index.d} != {EMBEDDING_DIM} for {EMBEDDING_MODEL}. "
+                    "Rebuild it with 'python scripts/build_index.py'"
+                )
         else:
             logger.warning(f"FAISS index not found at {faiss_index_path}")
             logger.warning("Falling back to NumPy dot product if embeddings available")
@@ -128,6 +136,7 @@ class HybridRetriever:
                 "Please ensure all required files are present in the outputs/ directory."
             )
         self.df = pd.read_csv(assessments_path)
+        self.df["duration_minutes"] = self.df["duration"].map(parse_duration_minutes)
         logger.info(f"Loaded {len(self.df)} assessments")
         
         # Set retrieval weights
@@ -142,29 +151,23 @@ class HybridRetriever:
         return query
     
     def _get_query_embedding(self, query: str) -> np.ndarray:
-        """Generate query embedding using Gemini embedding-001 model (768 dimensions)."""
+        """Generate a normalised query embedding (EMBEDDING_DIM dimensions)."""
         try:
-            response = genai.embed_content(
-                model="models/embedding-001",
-                content=query,
-                task_type="retrieval_query"
-            )
-            embedding = np.array(response['embedding'])
-            # Normalize for cosine similarity
-            embedding = embedding / (np.linalg.norm(embedding) + 1e-8)
-            return embedding
+            return embed(query, task_type="RETRIEVAL_QUERY")[0]
         except Exception as e:
             logger.error(f"Failed to generate embedding: {e}")
             logger.warning("Falling back to zero vector - retrieval quality will be degraded")
-            return np.zeros(768)
+            return np.zeros(EMBEDDING_DIM)
     
     def _get_dense_scores(self, query_embedding: np.ndarray) -> np.ndarray:
         """Compute semantic similarity scores using FAISS vector search."""
         if self.faiss_index is not None:
             # Use FAISS for fast similarity search
             query_vec = query_embedding.reshape(1, -1).astype('float32')
-            similarities, _ = self.faiss_index.search(query_vec, self.faiss_index.ntotal)
-            scores = similarities[0]
+            similarities, ids = self.faiss_index.search(query_vec, self.faiss_index.ntotal)
+            # FAISS returns results sorted by similarity; scatter them back to catalogue row order
+            scores = np.empty(self.faiss_index.ntotal, dtype="float32")
+            scores[ids[0]] = similarities[0]
         elif self.embeddings is not None:
             # Fallback to NumPy dot product
             scores = np.dot(self.embeddings, query_embedding)

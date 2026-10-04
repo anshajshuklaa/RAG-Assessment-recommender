@@ -71,7 +71,7 @@ Query → Extract → RAG → Filter → Results
 1. **Query Enhancement** - Extracts role, skills, seniority using Gemini
 2. **Hybrid Retrieval** - Combines semantic (30%), BM25 (20%), specificity (40%), quality (10%)
 3. **Test Type Balancing** - Auto-detects K/P ratio (Knowledge vs Personality)
-4. **Intelligent Reranking** - Gemini 2.0 Flash with advanced reasoning
+4. **Intelligent Reranking** - Gemini 3.8 Flash (temperature 0)
 5. **Post-Processing** - Deduplication, soft duration scoring, domain validation
 
 ---
@@ -90,7 +90,7 @@ Query → Extract → RAG → Filter → Results
 - **Quality Filtering** (10%) - Assessment quality indicators
 
 ### Intelligent Reranking
-- Gemini 2.0 Flash with thinking mode
+- Gemini 3.8 Flash at temperature 0
 - Multi-criteria evaluation: role alignment, skill depth, assessment type
 - Functional skill prioritization for manager roles
 - Domain-specific matching patterns
@@ -270,8 +270,9 @@ curl -X POST "http://localhost:8000/recommend" \
 # Required: Google Gemini API Key
 GEMINI_API_KEY=your_api_key_here
 
-# Optional: Model selection (default: gemini-2.0-flash-thinking-exp)
-GEMINI_MODEL=gemini-2.0-flash-thinking-exp
+# Optional: model overrides
+GEMINI_MODEL=gemini-3.8-flash
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 ```
 
 ### Customization
@@ -288,21 +289,41 @@ Edit `src/query_enhancer.py` to:
 
 ---
 
-## Performance Metrics
+## Evaluation
 
-- **Assessment Coverage**: 506 assessments (98.1% of SHL catalog)
-- **Response Time**: 25-35 seconds per query (with intelligent reranking)
-- **Retrieval Strategy**: Hybrid (semantic + keyword + specificity)
-- **Reranking**: Gemini 2.0 Flash with thinking mode
+`scripts/evaluate.py` measures Mean Recall@10 and MAP@10 on the 10 labelled queries in `data/train.csv` (65 labelled URLs), stage by stage:
 
-### What Works Well
+```bash
+python scripts/evaluate.py                       # bm25, hybrid and full workflow
+python scripts/evaluate.py --stages bm25 hybrid  # no LLM calls
+```
 
-✅ **Technical queries** (Java, Python, SQL) - 90%+ accuracy  
-✅ **Content Writer** - 80%+ accuracy  
-✅ **Customer Support** - 95%+ accuracy  
-✅ **Data Analyst** - 70%+ accuracy  
-✅ **No duplicates** - Clean, professional output  
-✅ **Soft duration scoring** - No empty result sets
+| Configuration | Stage | Recall@10 | MAP@10 |
+|---|---|---|---|
+| Before fixes (retired Gemini models, all LLM/embedding calls failing) | full workflow | 0.303 | 0.137 |
+| Current models, before FAISS fix | hybrid retriever | 0.228 | 0.164 |
+| Current models, before FAISS fix | full workflow | 0.478 | 0.297 |
+| **After fixes** | BM25 only | 0.154 | 0.108 |
+| **After fixes** | hybrid retriever | **0.283** | **0.181** |
+
+Full-workflow numbers after the fixes are still to be measured (the free-tier key allows 20 LLM requests per day).
+These are training queries that some retrieval rules were tuned on, so they overstate held-out quality.
+
+### Rebuilding the vector index
+
+The FAISS index must be built with the same embedding model used for queries. After changing `GEMINI_EMBEDDING_MODEL`:
+
+```bash
+python scripts/build_index.py
+```
+
+This writes `outputs/faiss_gemini_001.index` and records the model in `outputs/metadata.json`.
+
+### Tests
+
+```bash
+pytest tests
+```
 
 ---
 
