@@ -231,7 +231,8 @@ class WorkflowOrchestrator:
                     "name": row['name'],
                     "url": row.get('url', ''),
                     "description": row.get('description', ''),
-                    "duration": int(duration) if pd.notna(duration) else 0,
+                    # None = not published in the catalogue (mostly reports derived from OPQ/MQ)
+                    "duration": int(duration) if pd.notna(duration) else None,
                     "test_types": row.get('test_types', ''),
                     "adaptive_irt": str(row.get('adaptive_irt_support', '')).strip().lower() == 'yes',
                     "remote_testing": str(row.get('remote_testing_support', '')).strip().lower() == 'yes',

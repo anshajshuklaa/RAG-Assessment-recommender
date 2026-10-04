@@ -74,7 +74,7 @@ def test_rag_node_carries_scores_duration_and_flags():
     results = state["retrieval_results"]
 
     assert [r["final_score"] for r in results] == pytest.approx([1.0, 0.6 / 0.9, 0.3 / 0.9])
-    assert [r["duration"] for r in results] == [18, 25, 0]
+    assert [r["duration"] for r in results] == [18, 25, None]
     assert [r["adaptive_irt"] for r in results] == [False, False, True]
     assert [r["remote_testing"] for r in results] == [True, False, True]
 
@@ -133,3 +133,13 @@ def test_split_query_keeps_short_queries_whole():
     long_jd = ". ".join(f"Responsibility number {i} involves stakeholder reporting" for i in range(20))
     parts = split_query(long_jd)
     assert parts[0] == long_jd and 1 < len(parts) <= 7
+
+
+def test_unknown_duration_is_not_scored_as_zero_minutes():
+    from src.improvements import apply_duration_filter
+
+    results = [{"name": "OPQ Report", "duration": None, "score": 0.8},
+               {"name": "Java 8", "duration": 40, "score": 0.8}]
+    scored = apply_duration_filter(results, {"max": 40})
+    unknown = next(r for r in scored if r["name"] == "OPQ Report")
+    assert unknown["duration_score"] == 1.0 and unknown["score"] == 0.8
