@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from rank_bm25 import BM25Okapi
 import pandas as pd
+from src.degradation import report_degraded
 from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, embed
 from dotenv import load_dotenv
 import faiss
@@ -157,6 +158,7 @@ class HybridRetriever:
         except Exception as e:
             logger.error(f"Failed to generate embedding: {e}")
             logger.warning("Falling back to zero vector - retrieval quality will be degraded")
+            report_degraded("embedding_unavailable")
             return np.zeros(EMBEDDING_DIM)
     
     def _get_dense_scores(self, query_embedding: np.ndarray) -> np.ndarray:

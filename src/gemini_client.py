@@ -5,6 +5,7 @@ Single place for model names so the embedding model used to build the FAISS
 index always matches the one used to embed queries.
 """
 
+import json
 import os
 from functools import lru_cache
 from typing import List, Union
@@ -51,3 +52,18 @@ def generate(prompt: str, model: str = None) -> str:
         config=types.GenerateContentConfig(temperature=0),
     )
     return response.text or ""
+
+
+def generate_json(prompt: str, model: str = None, schema=None):
+    """Temperature-0 generation constrained to JSON (optionally to a response schema); returns parsed JSON."""
+    config = types.GenerateContentConfig(temperature=0, response_mime_type="application/json")
+    if schema is not None:
+        config.response_schema = schema
+    response = get_client().models.generate_content(
+        model=model or GENERATION_MODEL,
+        contents=prompt,
+        config=config,
+    )
+    if response.parsed is not None:
+        return response.parsed
+    return json.loads(response.text or "")

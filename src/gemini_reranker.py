@@ -5,8 +5,10 @@ Provides assessment reranking based on sophisticated matching criteria
 including role-skill alignment, seniority matching, and assessment type appropriateness.
 """
 
+import json
 import os
-from src.gemini_client import GENERATION_MODEL, generate
+from src.degradation import report_degraded
+from src.gemini_client import GENERATION_MODEL, generate_json
 from typing import List, Dict, Optional, cast
 import time
 from src.logging_config import get_logger
@@ -117,7 +119,7 @@ Do not include any other information in your response, just the JSON array of in
         for i, cand in enumerate(candidates, 1):
             text += f"{i}. [{cand.get('duration', 'Unknown')}] {cand.get('name', 'Unknown')}\n"
             desc = cand.get('description', '')
-            text += f"   {desc[:100] if desc else 'No description'}\n"
+            text += f"   {desc[:300] if desc else 'No description'}\n"
             test_types = cand.get('test_types', 'Unknown')
             text += f"   Type: {test_types}\n\n"
         return text
@@ -201,15 +203,15 @@ Do not include any other information in your response, just the JSON array of in
             num_candidates=len(candidates)
         )
         # Debug: print short summary of prompt to help troubleshooting
-        print(f"  [reranker] model={self.model_name}, prompt_chars={len(prompt)}, candidates={len(candidates)}")
+        logger.debug(f"Reranking with model={self.model_name}, prompt_chars={len(prompt)}, candidates={len(candidates)}")
         
         # Try reranking with retries
         for attempt in range(max_retries + 1):
             try:
-                response_text = generate(prompt, model=self.model_name)
+                ranking = generate_json(prompt, model=self.model_name, schema=list[int])
                 
                 # Parse response
-                indices = self._parse_response(response_text, len(candidates))
+                indices = self._parse_response(json.dumps(ranking), len(candidates))
                 
                 if not indices:
                     raise ValueError("Could not parse response indices")
@@ -230,8 +232,9 @@ Do not include any other information in your response, just the JSON array of in
                 
                 # Check if it's a quota/rate limit error (429)
                 if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
-                    print(f"  ⚠ API quota exhausted - using fallback ranking")
+                    logger.warning("Reranker quota exhausted - using retrieval order")
                     self.stats["errors"] += 1
+                    report_degraded("reranker_unavailable")
                     # Don't retry on quota errors - return fallback immediately
                     return candidates[:top_k]
                 
@@ -239,11 +242,12 @@ Do not include any other information in your response, just the JSON array of in
                 self.stats["retries"] += 1
                 
                 if attempt < max_retries:
-                    print(f"  Reranking attempt {attempt + 1} failed, retrying...")
+                    logger.warning(f"Reranking attempt {attempt + 1} failed ({e}), retrying...")
                     time.sleep(1)
                 else:
-                    print(f"  Reranking failed after {max_retries + 1} attempts")
+                    logger.warning(f"Reranking failed after {max_retries + 1} attempts - using retrieval order")
                     self.stats["errors"] += 1
+                    report_degraded("reranker_unavailable")
                     # Fallback: return top-k by input order
                     return candidates[:top_k]
         
