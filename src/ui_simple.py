@@ -481,11 +481,12 @@ def call_api(query: str, top_k: int = 10, custom_ratio=None):
         response = requests.post(
             f"{API_BASE_URL}/recommend",
             json=payload,
+            headers={"X-API-Key": os.getenv("API_KEY", "")},
             timeout=60
         )
         response.raise_for_status()
         return response.json()
-    except requests.exceptions.RequestException as e:
+    except requests.exceptions.RequestException:
         return None
 
 def check_api_health():

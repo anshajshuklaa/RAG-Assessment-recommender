@@ -16,9 +16,7 @@ import numpy as np
 import pickle
 import re
 import os
-from pathlib import Path
-from typing import List, Dict, Tuple, Optional
-from rank_bm25 import BM25Okapi
+from typing import List, Dict, Optional
 import pandas as pd
 from src.degradation import report_degraded
 from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, embed
@@ -27,12 +25,7 @@ import faiss
 
 load_dotenv()
 
-# Configure logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 
 def parse_duration_minutes(value) -> Optional[int]:
     """Parse catalogue durations like '49 minutes' into an int; None when unknown."""

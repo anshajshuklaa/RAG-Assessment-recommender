@@ -1,7 +1,6 @@
 from src.degradation import report_degraded
 from src.gemini_client import generate_json
 import os
-import json
 from typing import Dict
 from dotenv import load_dotenv
 from src.logging_config import get_logger

@@ -9,7 +9,7 @@ Example:
     Expected: ~60% Knowledge (K) + ~40% Personality (P) tests
 """
 
-from typing import List, Dict, Tuple
+from typing import List, Dict
 import math
 import logging
 

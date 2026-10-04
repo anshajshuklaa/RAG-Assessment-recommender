@@ -18,7 +18,6 @@ Implementation Strategy:
 
 import re
 from typing import List, Dict, Optional, Set
-from collections import Counter
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)

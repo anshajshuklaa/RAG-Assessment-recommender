@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.retreiver import HybridRetriever, parse_duration_minutes
+from src.retriever import HybridRetriever, parse_duration_minutes
 from workflow_graph import WorkflowOrchestrator
 
 
