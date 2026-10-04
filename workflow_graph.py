@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 
 from src.query_enhancer import HybridQueryEnhancer
-from src.retreiver import HybridRetriever
+from src.retriever import HybridRetriever
 from src.gemini_reranker import GeminiReranker
 from src.test_type_balancer import balance_candidates, default_ratio_from_query
 from src.improvements import apply_improvements
@@ -332,8 +332,8 @@ class WorkflowOrchestrator:
                         logger.info(f"  → Domain pre-filter applied ({pre_len} → {len(candidates_with_ids)}) for domains={required_domains}")
                     else:
                         logger.info("  → Domain pre-filter skipped due to insufficient candidates")
-            except Exception as _:
-                logger.warning("  → Domain pre-filter encountered an issue; proceeding without it")
+            except Exception as e:
+                logger.warning(f"  → Domain pre-filter failed ({e}); proceeding without it")
             
             # Log query info for debugging
             logger.info(f"  → Query info: role={query_info.get('role', 'N/A')}, "
@@ -396,8 +396,8 @@ class WorkflowOrchestrator:
             # Combine reranked order with hybrid score and domain bonus
             try:
                 combined_ranked = combine_scores_with_domain(reranked, query_info, top_k=15)
-            except Exception as _:
-                logger.warning("  → Combined scoring failed; using reranked results")
+            except Exception as e:
+                logger.warning(f"  → Combined scoring failed ({e}); using reranked results")
                 combined_ranked = reranked
 
             # Post-reranking validation for specialist roles
@@ -407,8 +407,8 @@ class WorkflowOrchestrator:
                     validated = post_rerank_specialist_validate(combined_ranked, specialist_keywords, top_k=15)
                 else:
                     validated = combined_ranked[:15]
-            except Exception as _:
-                logger.warning("  → Specialist validation failed; proceeding without it")
+            except Exception as e:
+                logger.warning(f"  → Specialist validation failed ({e}); proceeding without it")
                 validated = combined_ranked[:15]
             
             # Apply critical improvements pipeline

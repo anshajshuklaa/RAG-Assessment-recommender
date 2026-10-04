@@ -6,10 +6,9 @@ including role-skill alignment, seniority matching, and assessment type appropri
 """
 
 import json
-import os
 from src.degradation import report_degraded
 from src.gemini_client import GENERATION_MODEL, generate_json
-from typing import List, Dict, Optional, cast
+from typing import List, Dict, Optional
 import time
 from src.logging_config import get_logger
 
@@ -218,7 +217,6 @@ Do not include any other information in your response, just the JSON array of in
                 
                 # Pad with remaining candidates if needed
                 if len(indices) < top_k:
-                    all_indices = set(range(len(candidates)))
                     used = set(indices)
                     remaining = [i for i in range(len(candidates)) if i not in used]
                     indices.extend(remaining)
@@ -256,47 +254,3 @@ Do not include any other information in your response, just the JSON array of in
     def get_stats(self) -> Dict:
         """Get reranker statistics"""
         return self.stats.copy()
-
-
-def main():
-    """Test reranker"""
-    import pandas as pd
-    import pickle
-    import numpy as np
-    
-    # Load data (506 assessments)
-    df = pd.read_csv("outputs/assessments_processed.csv")
-    embeddings = np.load("outputs/embeddings_gemini_001.npy")  # Updated path
-    
-    with open("outputs/bm25_index.pkl", 'rb') as f:  # Already updated to 506
-        bm25 = pickle.load(f)
-    
-    # Create sample candidates
-    candidates = []
-    for i in range(10):
-        row = df.iloc[i]
-        candidates.append({
-            'index': i,
-            'name': row['name'],
-            'description': row['description'],
-            'duration': row.get('duration', 'N/A'),
-            'test_types': row.get('test_types', 'Unknown'),
-        })
-    
-    # Test reranking
-    reranker = GeminiReranker()
-    
-    query = "Python developer with Django experience"
-    print(f"\nQuery: {query}\n")
-    
-    reranked = reranker.rerank(query, candidates, top_k=5)
-    
-    print("Top 5 Reranked Results:")
-    for i, cand in enumerate(reranked, 1):
-        print(f"{i}. {cand['name']}")
-    
-    print(f"\nStats: {reranker.get_stats()}")
-
-
-if __name__ == "__main__":
-    main()

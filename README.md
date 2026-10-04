@@ -4,8 +4,8 @@
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2.52-4F46E5)](https://langchain-ai.github.io/langgraph/)
-[![Gemini](https://img.shields.io/badge/Gemini-2.0%20Flash-4285F4?logo=google)](https://ai.google.dev/)
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python)](https://www.python.org/)
+[![Gemini](https://img.shields.io/badge/Gemini-3.8%20Flash-4285F4?logo=google)](https://ai.google.dev/)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)](https://www.python.org/)
 
 ---
 
@@ -15,8 +15,8 @@
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd shl-recommender
+git clone https://github.com/anshajshuklaa/RAG-Assessment-recommender.git
+cd RAG-Assessment-recommender
 
 # Create virtual environment (recommended)
 python -m venv venv
@@ -38,12 +38,13 @@ cp .env.example .env
 # GEMINI_API_KEY=your_api_key_here
 ```
 
-Get your API key from: https://makersuite.google.com/app/apikey
+Get your API key from: https://aistudio.google.com/apikey
 
 ### 3. Run the Application
 
 **Option A: Streamlit Web UI (Recommended)**
 ```bash
+python run_api.py   # the UI calls the API
 python run_ui.py
 ```
 Opens at: http://localhost:8501
@@ -60,10 +61,22 @@ Opens at: http://localhost:8000
 
 ## System Architecture
 
-```
-Query → Extract → RAG → Filter → Results
-         ↓         ↓      ↓
-    (enhance) (retrieve) (rerank + balance)
+```mermaid
+flowchart LR
+    Q[Query] --> E[Query enhancer<br/>Gemini: role, skills, preferences]
+    E --> R[Hybrid retriever<br/>0.3 semantic + 0.2 BM25<br/>+ 0.4 keyword specificity + 0.1 quality]
+    R -->|scores 0-1| C{Retrieval<br/>confidence OK?}
+    C -->|no| B[Broader retrieval<br/>k=100] --> F
+    C -->|yes| F[Test-type balancer<br/>Knowledge vs Personality]
+    F --> L[LLM reranker<br/>Gemini, JSON output]
+    L --> P[Post-processing<br/>dedup, duration preference]
+    P --> A[FastAPI /recommend<br/>X-Degraded headers]
+    subgraph Index
+      I[(FAISS index<br/>gemini-embedding-001)]
+      M[(BM25 index)]
+    end
+    I -.-> R
+    M -.-> R
 ```
 
 ### Pipeline Stages
@@ -113,13 +126,13 @@ Query → Extract → RAG → Filter → Results
 ## Project Structure
 
 ```
-shl-recommender/
+RAG-Assessment-recommender/
 ├── src/                        # Core application modules
 │   ├── __init__.py
 │   ├── api.py                 # FastAPI REST endpoints
-│   ├── ui_app.py              # Streamlit web interface
+│   ├── ui_simple.py           # Streamlit web interface
 │   ├── query_enhancer.py      # Query processing & skill expansion
-│   ├── retreiver.py           # Hybrid retrieval (FAISS + BM25)
+│   ├── retriever.py           # Hybrid retrieval (FAISS + BM25)
 │   ├── gemini_reranker.py     # Intelligent reranking
 │   ├── test_type_balancer.py  # K/P ratio balancing
 │   ├── improvements.py        # Post-processing pipeline
@@ -294,7 +307,7 @@ If no recommendations can be produced at all, it returns `503`.
 
 ### Customization
 
-Edit `src/retreiver.py` to adjust:
+Edit `src/retriever.py` to adjust:
 - **Hybrid weights**: Modify semantic/BM25/specificity ratios
 - **Top-K results**: Change default retrieval count
 
@@ -350,7 +363,7 @@ pytest tests
 
 ```bash
 # Ensure you're in project root
-cd shl-recommender
+cd RAG-Assessment-recommender
 
 # Activate virtual environment
 .\venv\Scripts\Activate.ps1  # Windows
@@ -400,7 +413,7 @@ If `outputs/` folder is missing required files:
 
 ### Key Dependencies
 ```
-google-generativeai>=0.3.0  # Gemini API
+google-genai>=1.0.0         # Gemini API
 faiss-cpu>=1.7.4            # Vector search
 rank-bm25>=0.2.2            # Keyword matching
 fastapi>=0.100.0            # REST API
@@ -431,6 +444,23 @@ langgraph>=0.2.0            # Workflow orchestration
 
 ---
 
+## Design Decisions and Trade-offs
+
+- **Hybrid retrieval.** BM25 catches exact skill names (Java, SQL); embeddings catch paraphrases
+  ("works well with business teams"). Each component is normalised to [0, 1] before weighting so the weights mean what they say.
+- **LLM reranking on a shortlist only.** The reranker sees the balanced top 30, which keeps cost and latency bounded;
+  on the training queries it lifted Recall@10 from 0.23 (hybrid) to 0.48 (full pipeline).
+- **No role-specific rules.** Hand-written boosts for particular roles were removed because they were tuned on the
+  evaluation queries; removing them did not lower retrieval recall.
+- **Index and query model versioned together.** `scripts/build_index.py` records the embedding model, and the retriever
+  refuses an index of the wrong dimension.
+- **Visible degradation.** Fallbacks keep the API answering, but every fallback is reported in `X-Degraded-Reasons`
+  so a degraded answer is never mistaken for a full one.
+- **Known limits.** Evaluation uses 10 labelled queries; the in-memory rate limiter is per process;
+  latency is dominated by the two LLM calls.
+
+---
+
 ## Deployment
 
 ### Streamlit Cloud
@@ -440,13 +470,9 @@ langgraph>=0.2.0            # Workflow orchestration
 # Deploy from GitHub repository
 ```
 
-### Docker (Optional)
+### Docker
 ```bash
-# Build image
-docker build -t shl-recommender .
-
-# Run container
-docker run -p 8501:8501 --env-file .env shl-recommender
+docker compose up --build   # API on :8000, UI on :8501
 ```
 
 ---
@@ -455,7 +481,6 @@ docker run -p 8501:8501 --env-file .env shl-recommender
 
 For questions or issues:
 - Check this README for common solutions
-- Review `detailed_fixes.md` for implementation details
 - Check API documentation at `/docs` endpoint
 
 ---

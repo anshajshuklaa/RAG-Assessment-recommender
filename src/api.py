@@ -18,7 +18,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
-import asyncio
 import os
 import time
 from datetime import datetime
@@ -327,7 +326,7 @@ async def recommend(request: RecommendationRequest, response: Response):
                 import ast
                 try:
                     test_types = ast.literal_eval(test_types) if test_types.startswith('[') else [test_types]
-                except:
+                except (ValueError, SyntaxError):
                     test_types = [test_types]
             elif not isinstance(test_types, list):
                 test_types = [str(test_types)]
