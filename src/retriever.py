@@ -19,7 +19,7 @@ import os
 from typing import List, Dict, Optional
 import pandas as pd
 from src.degradation import report_degraded
-from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, embed, index_path
+from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, EMBEDDING_PROVIDER, embed, index_path
 from dotenv import load_dotenv
 import faiss
 
@@ -106,12 +106,12 @@ class HybridRetriever:
             assessments_path: Path to assessments CSV
             
         Raises:
-            ValueError: If GEMINI_API_KEY not found in environment
+            ValueError: If GEMINI_API_KEY is missing while EMBEDDING_PROVIDER=gemini
             FileNotFoundError: If required index files are missing
         """
         logger.info("Initializing Hybrid Retriever")
         
-        if not os.getenv("GEMINI_API_KEY"):
+        if EMBEDDING_PROVIDER == "gemini" and not os.getenv("GEMINI_API_KEY"):
             raise ValueError("GEMINI_API_KEY not found in environment. Please set it in .env file")
         
         # Load embeddings (fallback for FAISS)
