@@ -13,6 +13,7 @@ Builds on PR 5 (`claude/project-thread-apdr0m-pr5`), which added `EMBEDDING_PROV
 | 4 open embedding models compared | bge-base best; bge-small and MiniLM hurt R@10; e5-base best R@50 (0.484) |
 | Fusion-weight sweep | Best is about 1 point above the defaults and overfits 10 queries; defaults kept |
 | 3 cross-encoder rerankers on top-50 | ms-marco-MiniLM +2 pts (noise); bge-reranker-base and mxbai-xsmall hurt results; not adopted |
+| Two-stage shortlist (`HEAD_K=10`, `TAIL_SEMANTIC_WEIGHT=0.7`, weighted fusion, bge-base) | R@10 unchanged at 0.283; R@50 0.438 → 0.510, so the reranker sees more of the relevant tests |
 
 Reproduce: `python scripts/hf_experiments.py` (about 15 min on 4 CPUs). Details and caveats: `analysis.md`.
 

@@ -143,3 +143,22 @@ def test_unknown_duration_is_not_scored_as_zero_minutes():
     scored = apply_duration_filter(results, {"max": 40})
     unknown = next(r for r in scored if r["name"] == "OPQ Report")
     assert unknown["duration_score"] == 1.0 and unknown["score"] == 0.8
+
+
+def test_tail_fill_keeps_head_and_adds_semantic_matches():
+    retriever = HybridRetriever.__new__(HybridRetriever)
+    n = 30
+    components = {
+        "semantic": np.linspace(0, 1, n),  # item 29 is the best semantic match
+        "bm25": np.zeros(n),
+        "specificity": np.zeros(n),
+        "quality": np.zeros(n),
+    }
+    ranked = list(range(retriever.HEAD_K + 5))
+    out = retriever._fill_tail(ranked, components, k=20)
+    assert out[:retriever.HEAD_K] == ranked[:retriever.HEAD_K]
+    assert out[retriever.HEAD_K:] == [29, 28, 27, 26, 25, 24, 23, 22, 21, 20]
+    assert len(set(out)) == 20
+
+    components["semantic"] = np.zeros(n)  # embeddings unavailable: shortlist unchanged
+    assert retriever._fill_tail(ranked, components, k=20) == ranked
