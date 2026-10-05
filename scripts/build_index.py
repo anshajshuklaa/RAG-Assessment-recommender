@@ -21,8 +21,7 @@ ASSESSMENTS_PATH = "outputs/assessments_processed.csv"
 INDEX_PATH = index_path()
 METADATA_PATH = "outputs/metadata.json"
 BATCH_SIZE = 50
-# Gemini free tier allows 100 embedding requests per minute; local models have no quota
-BATCH_PAUSE_SECS = 32 if EMBEDDING_PROVIDER == "gemini" else 0
+BATCH_PAUSE_SECS = 32  # free tier allows 100 embedding requests per minute
 
 
 def main():
@@ -39,7 +38,7 @@ def main():
                 print(f"  batch {start}: {str(e)[:80]}; retrying in 65s")
                 time.sleep(65)
         print(f"Embedded {min(start + BATCH_SIZE, len(texts))}/{len(texts)}")
-        if BATCH_PAUSE_SECS and start + BATCH_SIZE < len(texts):
+        if EMBEDDING_PROVIDER == "gemini" and start + BATCH_SIZE < len(texts):
             time.sleep(BATCH_PAUSE_SECS)
 
     index = faiss.IndexFlatIP(EMBEDDING_DIM)

@@ -90,7 +90,7 @@ class HybridRetriever:
     RRF_K = 60  # standard RRF constant; dampens the gap between neighbouring ranks
     # Two-stage shortlist: the first HEAD_K results keep the weights above; the rest of the
     # shortlist (what the reranker sees) comes from a semantic-heavy ranking, which finds the
-    # "companion" tests that share no words with the query. See upgrade-log Experiment 9.
+    # "companion" tests that share no words with the query. See upgrade-log.md (two-stage shortlist).
     HEAD_K = 10
     TAIL_SEMANTIC_WEIGHT = 0.7
     
@@ -111,7 +111,7 @@ class HybridRetriever:
             assessments_path: Path to assessments CSV
             
         Raises:
-            ValueError: If GEMINI_API_KEY not found in environment
+            ValueError: If GEMINI_API_KEY is missing while EMBEDDING_PROVIDER=gemini
             FileNotFoundError: If required index files are missing
         """
         logger.info("Initializing Hybrid Retriever")
