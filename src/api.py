@@ -59,7 +59,7 @@ class Assessment(BaseModel):
     name: str = Field(..., description="Name of the assessment")
     adaptive_support: str = Field(default="No", description='Either "Yes" or "No" indicating if the assessment supports adaptive testing')
     description: str = Field(..., description="Detailed description of the assessment")
-    duration: int = Field(..., description="Duration of the assessment in minutes")
+    duration: int = Field(..., description="Duration of the assessment in minutes (0 when the catalogue does not publish one)")
     remote_support: str = Field(default="Yes", description='Either "Yes" or "No" indicating if the assessment can be taken remotely')
     test_type: List[str] = Field(..., description="Categories or types of the assessment")
 
@@ -340,7 +340,7 @@ async def recommend(request: RecommendationRequest, response: Response):
                 name=rec.get("name", "Unknown"),
                 adaptive_support=adaptive_support,
                 description=rec.get("description", ""),
-                duration=rec.get("duration_minutes", rec.get("duration", 0)),
+                duration=rec.get("duration") or 0,  # 0 = duration not published in the catalogue
                 remote_support=remote_support,
                 test_type=test_types
             ))

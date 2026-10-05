@@ -79,3 +79,10 @@ def test_rate_limit(client):
     with client({"results": [RESULT]}, rate_limit=2) as c:
         codes = [post(c).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
+
+
+def test_unknown_duration_is_reported_as_zero(client):
+    with client({"results": [{**RESULT, "duration": None}], "degraded_reasons": []}) as c:
+        r = post(c)
+    assert r.status_code == 200
+    assert r.json()["recommended_assessments"][0]["duration"] == 0

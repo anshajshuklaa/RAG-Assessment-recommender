@@ -116,7 +116,9 @@ Do not include any other information in your response, just the JSON array of in
         """Format candidates for LLM prompt"""
         text = ""
         for i, cand in enumerate(candidates, 1):
-            text += f"{i}. [{cand.get('duration', 'Unknown')}] {cand.get('name', 'Unknown')}\n"
+            duration = cand.get('duration')
+            duration_text = f"{duration} min" if duration else "duration not published"
+            text += f"{i}. [{duration_text}] {cand.get('name', 'Unknown')}\n"
             desc = cand.get('description', '')
             text += f"   {desc[:300] if desc else 'No description'}\n"
             test_types = cand.get('test_types', 'Unknown')

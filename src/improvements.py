@@ -250,7 +250,7 @@ def apply_duration_filter(results: List[Dict], constraint: Dict[str, int]) -> Li
                 logger.debug(f"Could not parse duration: {duration} for {result.get('name')}")
                 duration = None
         
-        if isinstance(duration, (int, float)):
+        if isinstance(duration, (int, float)) and duration > 0:
             # Calculate duration score
             duration_score = calculate_duration_score(int(duration), constraint)
             

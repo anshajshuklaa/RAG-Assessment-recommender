@@ -13,6 +13,10 @@ Usage:
   python scripts/evaluate.py                 # all stages
   python scripts/evaluate.py --stages bm25 hybrid
   python scripts/evaluate.py --pause 20      # seconds between queries (free-tier quotas)
+  python scripts/evaluate.py --stages hybrid --fusion weighted --no-decompose   # compare retrieval variants
+
+Also reports Recall@50 for the retrieval stages: the reranker can only reorder what
+retrieval hands it, so Recall@50 is the ceiling for the full pipeline.
 """
 
 import argparse
@@ -50,6 +54,8 @@ def main():
     parser.add_argument("--stages", nargs="+", default=["bm25", "hybrid", "full"], choices=["bm25", "hybrid", "full"])
     parser.add_argument("--pause", type=float, default=0.0, help="seconds to wait between queries")
     parser.add_argument("--out", help="optional CSV path for per-query results")
+    parser.add_argument("--fusion", choices=["rrf", "weighted"], help="override RETRIEVAL_FUSION")
+    parser.add_argument("--no-decompose", action="store_true", help="disable long-query decomposition")
     args = parser.parse_args()
 
     logging.disable(logging.WARNING)
@@ -60,16 +66,24 @@ def main():
     orchestrator = get_orchestrator()
     retriever = orchestrator.retriever
     urls = retriever.df["url"].tolist()
+    if args.fusion:
+        retriever.fusion = args.fusion
+    if args.no_decompose:
+        retriever.decompose = False
+    shortlist = 50
 
     rows = []
     for i, (query, relevant) in enumerate(gold.items(), 1):
         row = {"query": query[:60].replace("\n", " "), "n_relevant": len(relevant)}
         if "bm25" in args.stages:
-            top = np.argsort(retriever._get_sparse_scores(query))[::-1][:args.k]
-            row["bm25_recall"], row["bm25_ap"] = recall_and_ap([urls[j] for j in top], relevant, args.k)
+            top = np.argsort(retriever._get_sparse_scores(query))[::-1][:shortlist]
+            ranked = [urls[j] for j in top]
+            row["bm25_recall"], row["bm25_ap"] = recall_and_ap(ranked, relevant, args.k)
+            row["bm25_recall50"], _ = recall_and_ap(ranked, relevant, shortlist)
         if "hybrid" in args.stages:
-            top = retriever.retrieve(query, k=args.k)
-            row["hybrid_recall"], row["hybrid_ap"] = recall_and_ap([urls[j] for j in top], relevant, args.k)
+            ranked = [urls[j] for j in retriever.retrieve(query, k=shortlist)]
+            row["hybrid_recall"], row["hybrid_ap"] = recall_and_ap(ranked, relevant, args.k)
+            row["hybrid_recall50"], _ = recall_and_ap(ranked, relevant, shortlist)
         if "full" in args.stages:
             start = time.time()
             output = asyncio.run(orchestrator.run(query))
@@ -85,11 +99,13 @@ def main():
     if args.out:
         results.to_csv(args.out, index=False)
 
-    print(f"\nMean over {len(results)} queries (K={args.k})")
-    print("| Stage | Recall@K | MAP@K |")
-    print("|---|---|---|")
+    print(f"\nMean over {len(results)} queries (K={args.k}; fusion={retriever.fusion}, decompose={retriever.decompose})")
+    print(f"| Stage | Recall@K | MAP@K | Recall@{shortlist} |")
+    print("|---|---|---|---|")
     for stage in args.stages:
-        print(f"| {stage} | {results[f'{stage}_recall'].mean():.3f} | {results[f'{stage}_ap'].mean():.3f} |")
+        r50 = results.get(f"{stage}_recall50")
+        r50 = f"{r50.mean():.3f}" if r50 is not None else "-"
+        print(f"| {stage} | {results[f'{stage}_recall'].mean():.3f} | {results[f'{stage}_ap'].mean():.3f} | {r50} |")
     if "full" in args.stages:
         print(f"\nMean full-workflow latency: {results['full_secs'].mean():.1f}s")
 
