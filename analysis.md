@@ -17,10 +17,10 @@ pipeline did whenever Gemini embeddings were unavailable.
 | Embedding model | Dim | Index build | Semantic only R@10 | Hybrid weighted R@10 / R@50 | Hybrid RRF R@10 / MAP@10 |
 |---|---|---|---|---|---|
 | *(semantic off)* | – | – | – | 0.254 / 0.430 | 0.198 / 0.146 |
-| BAAI/bge-small-en-v1.5 | 384 | ~20 s | 0.243 | 0.210 / 0.448 | 0.234 / 0.166 |
-| **BAAI/bge-base-en-v1.5** | 768 | 40 s | 0.223 | **0.283** / 0.438 | **0.276 / 0.168** |
+| BAAI/bge-small-en-v1.5 | 384 | 22 s | 0.243 | 0.210 / 0.448 | 0.234 / 0.166 |
+| **BAAI/bge-base-en-v1.5** | 768 | 33 s | 0.223 | **0.283** / 0.438 | **0.276 / 0.168** |
 | sentence-transformers/all-MiniLM-L6-v2 | 384 | 14 s | 0.136 | 0.224 / 0.437 | 0.224 / 0.134 |
-| intfloat/e5-base-v2 | 768 | 41 s | 0.206 | 0.237 / **0.484** | 0.237 / 0.130 |
+| intfloat/e5-base-v2 | 768 | 32 s | 0.206 | 0.237 / **0.484** | 0.237 / 0.130 |
 
 BM25 alone: R@10 0.154, R@50 0.296.
 
@@ -58,18 +58,18 @@ These run on the e5-base hybrid shortlist, which had the highest Recall@50.
 | Reranker | R@10 | MAP@10 | CPU time / query |
 |---|---|---|---|
 | none (hybrid order) | 0.237 | 0.104 | – |
-| **cross-encoder/ms-marco-MiniLM-L-6-v2** | **0.257** | **0.129** | 1.2 s |
-| BAAI/bge-reranker-base | 0.146 | 0.098 | 7.5 s |
-| mixedbread-ai/mxbai-rerank-xsmall-v1 | 0.176 | 0.068 | 56.9 s |
+| **cross-encoder/ms-marco-MiniLM-L-6-v2** | **0.257** | **0.129** | 1.0 s |
+| BAAI/bge-reranker-base | 0.146 | 0.098 | 6.0 s |
+| mixedbread-ai/mxbai-rerank-xsmall-v1 | 0.176 | 0.068 | 6.5 s |
 
 - Only the small MS MARCO cross-encoder helps, by about 2 points, which is within noise.
 - The two larger rerankers make results **much worse**. These queries are long job descriptions, cut off at 512 tokens, and the passages are product blurbs. That's far from what the rerankers were trained on.
-- Reranking on CPU costs up to a minute per query.
+- Reranking adds 1–6.5 s of CPU time per query (timings vary by machine; see `rerank_results.json`).
 
 ## Recommendation
 
 1. For local or keyless mode, use **`EMBEDDING_PROVIDER=local` with `BAAI/bge-base-en-v1.5` and `RETRIEVAL_FUSION=rrf`**.
-   R@10 is 0.276 (vs 0.198 for RRF without semantic search), and it has the best MAP@10 at default weights. There's no quota, and the index builds in 40 s.
+   R@10 is 0.276 (vs 0.198 for RRF without semantic search), and it has the best MAP@10 at default weights. There's no quota, and the index builds in about 35 s.
 2. Keep the default weights and keep decomposition off.
 3. Don't add a cross-encoder stage yet. The only gain is within noise, and it adds CPU latency and a model download.
 4. The real bottleneck is the evaluation set. Labelling about 30–50 more queries would make every comparison above trustworthy, and would let the weights be tuned by cross-validation.
