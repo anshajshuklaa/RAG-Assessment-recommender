@@ -19,7 +19,7 @@ import os
 from typing import List, Dict, Optional
 import pandas as pd
 from src.degradation import report_degraded
-from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, embed, index_path
+from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, EMBEDDING_PROVIDER, embed, index_path
 from dotenv import load_dotenv
 import faiss
 
@@ -88,6 +88,11 @@ class HybridRetriever:
         'quality': QUALITY_WEIGHT,
     }
     RRF_K = 60  # standard RRF constant; dampens the gap between neighbouring ranks
+    # Two-stage shortlist: the first HEAD_K results keep the weights above; the rest of the
+    # shortlist (what the reranker sees) comes from a semantic-heavy ranking, which finds the
+    # "companion" tests that share no words with the query. See upgrade-log Experiment 9.
+    HEAD_K = 10
+    TAIL_SEMANTIC_WEIGHT = 0.7
     
     def __init__(
         self,
@@ -111,7 +116,7 @@ class HybridRetriever:
         """
         logger.info("Initializing Hybrid Retriever")
         
-        if not os.getenv("GEMINI_API_KEY"):
+        if EMBEDDING_PROVIDER == "gemini" and not os.getenv("GEMINI_API_KEY"):
             raise ValueError("GEMINI_API_KEY not found in environment. Please set it in .env file")
         
         # Load embeddings (fallback for FAISS)
@@ -443,6 +448,8 @@ class HybridRetriever:
             hybrid_scores = self._rrf_fusion_queries(per_query)
         
         top_indices = np.argsort(-hybrid_scores, kind="stable")[:k].tolist()
+        if fusion == "weighted" and len(per_query) == 1 and k > self.HEAD_K:
+            top_indices = self._fill_tail(top_indices, self._component_scores(query, embeddings[0]), k)
         
         if return_scores:
             components = self._component_scores(query, embeddings[0])
@@ -454,6 +461,21 @@ class HybridRetriever:
             return results
         else:
             return top_indices
+
+    def _fill_tail(self, ranked: List[int], components: Dict[str, np.ndarray], k: int) -> List[int]:
+        """Keep the top HEAD_K results; fill the rest of the shortlist from a semantic-heavy ranking."""
+        if not np.any(components['semantic']):
+            return ranked  # embeddings unavailable: nothing to add
+        rest = 1 - self.TAIL_SEMANTIC_WEIGHT
+        others = sum(w for name, w in self.COMPONENT_WEIGHTS.items() if name != 'semantic')
+        tail_scores = sum(
+            (self.TAIL_SEMANTIC_WEIGHT if name == 'semantic' else w / others * rest) * components[name]
+            for name, w in self.COMPONENT_WEIGHTS.items()
+        )
+        head = ranked[:self.HEAD_K]
+        seen = set(head)
+        tail = [int(i) for i in np.argsort(-tail_scores, kind="stable") if i not in seen]
+        return head + tail[:k - len(head)]
 
     def _rrf_fusion_queries(self, per_query: List[np.ndarray]) -> np.ndarray:
         """Equal-weight RRF across sub-query rankings, normalised to 1.0 for an item ranked first everywhere."""

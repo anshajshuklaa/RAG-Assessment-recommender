@@ -1,6 +1,6 @@
 """
 Build the FAISS index over the assessment catalogue with the configured Gemini
-embedding model, and record the model in outputs/metadata.json.
+embedding model (EMBEDDING_PROVIDER), and record the model in outputs/metadata.json.
 
 Usage:  python scripts/build_index.py
 """
@@ -15,13 +15,14 @@ import faiss
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, embed, index_path  # noqa: E402
+from src.gemini_client import EMBEDDING_DIM, EMBEDDING_MODEL, EMBEDDING_PROVIDER, embed, index_path  # noqa: E402
 
 ASSESSMENTS_PATH = "outputs/assessments_processed.csv"
 INDEX_PATH = index_path()
 METADATA_PATH = "outputs/metadata.json"
 BATCH_SIZE = 50
-BATCH_PAUSE_SECS = 32  # free tier allows 100 embedding requests per minute
+# Gemini free tier allows 100 embedding requests per minute; local models have no quota
+BATCH_PAUSE_SECS = 32 if EMBEDDING_PROVIDER == "gemini" else 0
 
 
 def main():
@@ -38,7 +39,7 @@ def main():
                 print(f"  batch {start}: {str(e)[:80]}; retrying in 65s")
                 time.sleep(65)
         print(f"Embedded {min(start + BATCH_SIZE, len(texts))}/{len(texts)}")
-        if start + BATCH_SIZE < len(texts):
+        if BATCH_PAUSE_SECS and start + BATCH_SIZE < len(texts):
             time.sleep(BATCH_PAUSE_SECS)
 
     index = faiss.IndexFlatIP(EMBEDDING_DIM)
