@@ -9,6 +9,8 @@ import hashlib
 import json
 import os
 import pickle
+import tempfile
+import threading
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -54,6 +56,23 @@ def get_client() -> genai.Client:
 
 _CACHE_PATH = Path(os.getenv("EMBEDDING_CACHE_PATH", ".cache/query_embeddings.pkl"))
 _cache: Optional[Dict[str, np.ndarray]] = None
+# The API runs retrieval and reranking in worker threads, so cache writes must not interleave
+_cache_lock = threading.Lock()
+
+
+def _store(cache: Dict, path: Path, items: Dict) -> None:
+    """Add items to a cache and persist it; never raises, since the cache is an optimisation only."""
+    with _cache_lock:
+        cache.update(items)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # Write to a temp file and rename, so a crash or another process never sees half a pickle
+            with tempfile.NamedTemporaryFile("wb", dir=path.parent, prefix=path.name, delete=False) as f:
+                tmp = f.name
+                pickle.dump(cache, f)
+            os.replace(tmp, path)
+        except Exception:
+            pass
 
 
 def _cache_key(text: str, task_type: str) -> str:
@@ -62,12 +81,13 @@ def _cache_key(text: str, task_type: str) -> str:
 
 def _load_cache() -> Dict[str, np.ndarray]:
     global _cache
-    if _cache is None:
-        try:
-            with open(_CACHE_PATH, "rb") as f:
-                _cache = pickle.load(f)
-        except (OSError, pickle.PickleError, EOFError):
-            _cache = {}
+    with _cache_lock:
+        if _cache is None:
+            try:
+                with open(_CACHE_PATH, "rb") as f:
+                    _cache = pickle.load(f)
+            except (OSError, pickle.PickleError, EOFError):
+                _cache = {}
     return _cache
 
 
@@ -92,14 +112,7 @@ def embed(texts: Union[str, List[str]], task_type: str = "RETRIEVAL_QUERY") -> n
             raise ValueError(f"{EMBEDDING_MODEL} returned {vectors.shape[1]} dims, expected EMBEDDING_DIM={EMBEDDING_DIM}")
         if not use_cache:
             return vectors
-        for text, vector in zip(missing, vectors):
-            cache[_cache_key(text, task_type)] = vector
-        try:
-            _CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with open(_CACHE_PATH, "wb") as f:
-                pickle.dump(cache, f)
-        except OSError:
-            pass  # cache is an optimisation only
+        _store(cache, _CACHE_PATH, {_cache_key(t, task_type): v for t, v in zip(missing, vectors)})
 
     return np.stack([cache[k] for k in keys])
 
@@ -153,12 +166,13 @@ _llm_cache: Optional[Dict[str, object]] = None
 
 def _load_llm_cache() -> Dict[str, object]:
     global _llm_cache
-    if _llm_cache is None:
-        try:
-            with open(_LLM_CACHE_PATH, "rb") as f:
-                _llm_cache = pickle.load(f)
-        except (OSError, pickle.PickleError, EOFError):
-            _llm_cache = {}
+    with _cache_lock:
+        if _llm_cache is None:
+            try:
+                with open(_LLM_CACHE_PATH, "rb") as f:
+                    _llm_cache = pickle.load(f)
+            except (OSError, pickle.PickleError, EOFError):
+                _llm_cache = {}
     return _llm_cache
 
 
@@ -181,11 +195,5 @@ def generate_json(prompt: str, model: str = None, schema=None):
     response = get_client().models.generate_content(model=model, contents=prompt, config=config)
     result = response.parsed if response.parsed is not None else json.loads(response.text or "")
 
-    cache[key] = result
-    try:
-        _LLM_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(_LLM_CACHE_PATH, "wb") as f:
-            pickle.dump(cache, f)
-    except OSError:
-        pass  # cache is an optimisation only
+    _store(cache, _LLM_CACHE_PATH, {key: result})
     return result
