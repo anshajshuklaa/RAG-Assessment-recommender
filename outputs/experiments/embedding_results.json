@@ -1,0 +1,458 @@
+[
+  {
+    "model": "BAAI/bge-small-en-v1.5",
+    "index_build_secs": 22.1,
+    "semantic_only": {
+      "recall@10": 0.24333333333333335,
+      "map@10": 0.10655555555555556,
+      "recall@50": 0.3911111111111111
+    },
+    "bm25_only": {
+      "recall@10": 0.15444444444444444,
+      "map@10": 0.10777777777777778,
+      "recall@50": 0.29555555555555557
+    },
+    "hybrid_weighted": {
+      "recall@10": 0.20999999999999996,
+      "map@10": 0.10872619047619048,
+      "recall@50": 0.4477777777777778
+    },
+    "hybrid_rrf": {
+      "recall@10": 0.2344444444444444,
+      "map@10": 0.1661512345679012,
+      "recall@50": 0.40444444444444444
+    },
+    "no_semantic_weighted": {
+      "recall@10": 0.2544444444444444,
+      "map@10": 0.13374603174603172,
+      "recall@50": 0.43
+    },
+    "no_semantic_rrf": {
+      "recall@10": 0.19777777777777777,
+      "map@10": 0.14623456790123457,
+      "recall@50": 0.3788888888888889
+    },
+    "hybrid_weighted_decompose": {
+      "recall@10": 0.2188888888888889,
+      "map@10": 0.10963888888888888,
+      "recall@50": 0.3944444444444445
+    },
+    "hybrid_rrf_decompose": {
+      "recall@10": 0.2344444444444444,
+      "map@10": 0.1661512345679012,
+      "recall@50": 0.4133333333333334
+    },
+    "sweep_top5": [
+      {
+        "weights": {
+          "semantic": 0.2,
+          "bm25": 0.4,
+          "specificity": 0.4,
+          "quality": 0.0
+        },
+        "fusion": "weighted",
+        "recall@10": 0.27666666666666667,
+        "map@10": 0.14155555555555555,
+        "recall@50": 0.4311111111111111
+      },
+      {
+        "weights": {
+          "semantic": 0.2,
+          "bm25": 0.3,
+          "specificity": 0.5,
+          "quality": 0.0
+        },
+        "fusion": "weighted",
+        "recall@10": 0.27666666666666667,
+        "map@10": 0.13798853615520282,
+        "recall@50": 0.42777777777777776
+      },
+      {
+        "weights": {
+          "semantic": 0.6,
+          "bm25": 0.2,
+          "specificity": 0.2,
+          "quality": 0.0
+        },
+        "fusion": "rrf",
+        "recall@10": 0.27444444444444444,
+        "map@10": 0.15799999999999997,
+        "recall@50": 0.4511111111111112
+      },
+      {
+        "weights": {
+          "semantic": 0.5,
+          "bm25": 0.1,
+          "specificity": 0.4,
+          "quality": 0.0
+        },
+        "fusion": "rrf",
+        "recall@10": 0.27444444444444444,
+        "map@10": 0.1490952380952381,
+        "recall@50": 0.4211111111111111
+      },
+      {
+        "weights": {
+          "semantic": 0.6,
+          "bm25": 0.1,
+          "specificity": 0.2,
+          "quality": 0.1
+        },
+        "fusion": "rrf",
+        "recall@10": 0.27444444444444444,
+        "map@10": 0.14719797178130511,
+        "recall@50": 0.4011111111111111
+      }
+    ],
+    "sweep_size": 218,
+    "default_weights": {
+      "semantic": 0.3,
+      "bm25": 0.2,
+      "specificity": 0.4,
+      "quality": 0.1
+    },
+    "shortlist_fusion": "hybrid_weighted"
+  },
+  {
+    "model": "BAAI/bge-base-en-v1.5",
+    "index_build_secs": 33.2,
+    "semantic_only": {
+      "recall@10": 0.22333333333333333,
+      "map@10": 0.11433862433862434,
+      "recall@50": 0.5166666666666668
+    },
+    "bm25_only": {
+      "recall@10": 0.15444444444444444,
+      "map@10": 0.10777777777777778,
+      "recall@50": 0.29555555555555557
+    },
+    "hybrid_weighted": {
+      "recall@10": 0.2833333333333333,
+      "map@10": 0.12895238095238096,
+      "recall@50": 0.4377777777777778
+    },
+    "hybrid_rrf": {
+      "recall@10": 0.27555555555555555,
+      "map@10": 0.1677544091710758,
+      "recall@50": 0.4411111111111111
+    },
+    "no_semantic_weighted": {
+      "recall@10": 0.2544444444444444,
+      "map@10": 0.13374603174603172,
+      "recall@50": 0.43
+    },
+    "no_semantic_rrf": {
+      "recall@10": 0.19777777777777777,
+      "map@10": 0.14623456790123457,
+      "recall@50": 0.3788888888888889
+    },
+    "hybrid_weighted_decompose": {
+      "recall@10": 0.27222222222222225,
+      "map@10": 0.1258968253968254,
+      "recall@50": 0.38222222222222224
+    },
+    "hybrid_rrf_decompose": {
+      "recall@10": 0.25555555555555554,
+      "map@10": 0.1477544091710758,
+      "recall@50": 0.45000000000000007
+    },
+    "sweep_top5": [
+      {
+        "weights": {
+          "semantic": 0.5,
+          "bm25": 0.4,
+          "specificity": 0.1,
+          "quality": -0.0
+        },
+        "fusion": "weighted",
+        "recall@10": 0.29333333333333333,
+        "map@10": 0.16998148148148148,
+        "recall@50": 0.45555555555555555
+      },
+      {
+        "weights": {
+          "semantic": 0.3,
+          "bm25": 0.2,
+          "specificity": 0.5,
+          "quality": -0.0
+        },
+        "fusion": "rrf",
+        "recall@10": 0.29222222222222227,
+        "map@10": 0.18366666666666667,
+        "recall@50": 0.44222222222222224
+      },
+      {
+        "weights": {
+          "semantic": 0.5,
+          "bm25": 0.3,
+          "specificity": 0.1,
+          "quality": 0.1
+        },
+        "fusion": "rrf",
+        "recall@10": 0.2877777777777778,
+        "map@10": 0.1621031746031746,
+        "recall@50": 0.5133333333333334
+      },
+      {
+        "weights": {
+          "semantic": 0.3,
+          "bm25": 0.3,
+          "specificity": 0.4,
+          "quality": -0.0
+        },
+        "fusion": "weighted",
+        "recall@10": 0.2877777777777778,
+        "map@10": 0.14093298059964726,
+        "recall@50": 0.41111111111111115
+      },
+      {
+        "weights": {
+          "semantic": 0.4,
+          "bm25": 0.2,
+          "specificity": 0.4,
+          "quality": -0.0
+        },
+        "fusion": "rrf",
+        "recall@10": 0.2833333333333333,
+        "map@10": 0.1625396825396825,
+        "recall@50": 0.47777777777777786
+      }
+    ],
+    "sweep_size": 218,
+    "default_weights": {
+      "semantic": 0.3,
+      "bm25": 0.2,
+      "specificity": 0.4,
+      "quality": 0.1
+    },
+    "shortlist_fusion": "hybrid_rrf"
+  },
+  {
+    "model": "sentence-transformers/all-MiniLM-L6-v2",
+    "index_build_secs": 13.6,
+    "semantic_only": {
+      "recall@10": 0.13555555555555554,
+      "map@10": 0.08012345679012345,
+      "recall@50": 0.3277777777777778
+    },
+    "bm25_only": {
+      "recall@10": 0.15444444444444444,
+      "map@10": 0.10777777777777778,
+      "recall@50": 0.29555555555555557
+    },
+    "hybrid_weighted": {
+      "recall@10": 0.22444444444444445,
+      "map@10": 0.12454232804232805,
+      "recall@50": 0.43666666666666665
+    },
+    "hybrid_rrf": {
+      "recall@10": 0.22444444444444445,
+      "map@10": 0.13357936507936508,
+      "recall@50": 0.4411111111111111
+    },
+    "no_semantic_weighted": {
+      "recall@10": 0.2544444444444444,
+      "map@10": 0.13374603174603172,
+      "recall@50": 0.43
+    },
+    "no_semantic_rrf": {
+      "recall@10": 0.19777777777777777,
+      "map@10": 0.14623456790123457,
+      "recall@50": 0.3788888888888889
+    },
+    "hybrid_weighted_decompose": {
+      "recall@10": 0.22444444444444445,
+      "map@10": 0.12454232804232805,
+      "recall@50": 0.4033333333333333
+    },
+    "hybrid_rrf_decompose": {
+      "recall@10": 0.20444444444444443,
+      "map@10": 0.12357936507936507,
+      "recall@50": 0.45000000000000007
+    },
+    "sweep_top5": [
+      {
+        "weights": {
+          "semantic": 0.2,
+          "bm25": 0.4,
+          "specificity": 0.2,
+          "quality": 0.2
+        },
+        "fusion": "weighted",
+        "recall@10": 0.2544444444444444,
+        "map@10": 0.18738888888888888,
+        "recall@50": 0.37222222222222223
+      },
+      {
+        "weights": {
+          "semantic": 0.1,
+          "bm25": 0.5,
+          "specificity": 0.4,
+          "quality": 0.0
+        },
+        "fusion": "rrf",
+        "recall@10": 0.2544444444444444,
+        "map@10": 0.17855555555555558,
+        "recall@50": 0.38222222222222224
+      },
+      {
+        "weights": {
+          "semantic": 0.3,
+          "bm25": 0.4,
+          "specificity": 0.3,
+          "quality": -0.0
+        },
+        "fusion": "weighted",
+        "recall@10": 0.2544444444444444,
+        "map@10": 0.17761904761904762,
+        "recall@50": 0.3833333333333333
+      },
+      {
+        "weights": {
+          "semantic": 0.0,
+          "bm25": 0.6,
+          "specificity": 0.3,
+          "quality": 0.1
+        },
+        "fusion": "weighted",
+        "recall@10": 0.2544444444444444,
+        "map@10": 0.1703888888888889,
+        "recall@50": 0.37333333333333335
+      },
+      {
+        "weights": {
+          "semantic": 0.2,
+          "bm25": 0.4,
+          "specificity": 0.3,
+          "quality": 0.1
+        },
+        "fusion": "weighted",
+        "recall@10": 0.2544444444444444,
+        "map@10": 0.1673888888888889,
+        "recall@50": 0.3944444444444445
+      }
+    ],
+    "sweep_size": 218,
+    "default_weights": {
+      "semantic": 0.3,
+      "bm25": 0.2,
+      "specificity": 0.4,
+      "quality": 0.1
+    },
+    "shortlist_fusion": "hybrid_rrf"
+  },
+  {
+    "model": "intfloat/e5-base-v2",
+    "index_build_secs": 32.1,
+    "semantic_only": {
+      "recall@10": 0.20555555555555555,
+      "map@10": 0.09658641975308643,
+      "recall@50": 0.40444444444444444
+    },
+    "bm25_only": {
+      "recall@10": 0.15444444444444444,
+      "map@10": 0.10777777777777778,
+      "recall@50": 0.29555555555555557
+    },
+    "hybrid_weighted": {
+      "recall@10": 0.23666666666666664,
+      "map@10": 0.10367151675485009,
+      "recall@50": 0.4844444444444445
+    },
+    "hybrid_rrf": {
+      "recall@10": 0.23666666666666664,
+      "map@10": 0.13029717813051148,
+      "recall@50": 0.4722222222222222
+    },
+    "no_semantic_weighted": {
+      "recall@10": 0.2544444444444444,
+      "map@10": 0.13374603174603172,
+      "recall@50": 0.43
+    },
+    "no_semantic_rrf": {
+      "recall@10": 0.19777777777777777,
+      "map@10": 0.14623456790123457,
+      "recall@50": 0.3788888888888889
+    },
+    "hybrid_weighted_decompose": {
+      "recall@10": 0.22555555555555556,
+      "map@10": 0.10243694885361551,
+      "recall@50": 0.41111111111111115
+    },
+    "hybrid_rrf_decompose": {
+      "recall@10": 0.23666666666666664,
+      "map@10": 0.13029717813051148,
+      "recall@50": 0.43000000000000005
+    },
+    "sweep_top5": [
+      {
+        "weights": {
+          "semantic": 0.6,
+          "bm25": 0.0,
+          "specificity": 0.2,
+          "quality": 0.2
+        },
+        "fusion": "weighted",
+        "recall@10": 0.28888888888888886,
+        "map@10": 0.1233968253968254,
+        "recall@50": 0.5044444444444445
+      },
+      {
+        "weights": {
+          "semantic": 0.4,
+          "bm25": 0.4,
+          "specificity": 0.1,
+          "quality": 0.1
+        },
+        "fusion": "weighted",
+        "recall@10": 0.2877777777777778,
+        "map@10": 0.15112345679012346,
+        "recall@50": 0.4033333333333333
+      },
+      {
+        "weights": {
+          "semantic": 0.5,
+          "bm25": 0.3,
+          "specificity": 0.1,
+          "quality": 0.1
+        },
+        "fusion": "weighted",
+        "recall@10": 0.2877777777777778,
+        "map@10": 0.1459563492063492,
+        "recall@50": 0.44222222222222224
+      },
+      {
+        "weights": {
+          "semantic": 0.6,
+          "bm25": 0.0,
+          "specificity": 0.3,
+          "quality": 0.1
+        },
+        "fusion": "weighted",
+        "recall@10": 0.27888888888888885,
+        "map@10": 0.12344708994708994,
+        "recall@50": 0.4844444444444444
+      },
+      {
+        "weights": {
+          "semantic": 0.6,
+          "bm25": 0.0,
+          "specificity": 0.4,
+          "quality": 0.0
+        },
+        "fusion": "weighted",
+        "recall@10": 0.27888888888888885,
+        "map@10": 0.11677513227513228,
+        "recall@50": 0.5322222222222223
+      }
+    ],
+    "sweep_size": 218,
+    "default_weights": {
+      "semantic": 0.3,
+      "bm25": 0.2,
+      "specificity": 0.4,
+      "quality": 0.1
+    },
+    "shortlist_fusion": "hybrid_weighted"
+  }
+]
